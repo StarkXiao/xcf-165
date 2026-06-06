@@ -202,8 +202,8 @@ export const orderApi = {
     return api.get('/orders', { params })
   },
 
-  getStats(): Promise<ApiResponse<OrderStats>> {
-    return api.get('/orders/stats')
+  getStats(role?: 'buyer' | 'seller' | 'all'): Promise<ApiResponse<OrderStats>> {
+    return api.get('/orders/stats', role ? { params: { role } } : undefined)
   },
 
   confirm(id: string): Promise<ApiResponse<Order>> {

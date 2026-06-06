@@ -44,8 +44,54 @@ const STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
   cancelled: []
 }
 
+const ACTION_ALLOWED_ROLE: Record<string, ('buyer' | 'seller' | 'either')[]> = {
+  'pending→confirmed': ['seller'],
+  'pending→cancelled': ['either'],
+  'confirmed→paid': ['buyer'],
+  'confirmed→cancelled': ['either'],
+  'paid→shipped': ['seller'],
+  'paid→cancelled': ['seller'],
+  'shipped→completed': ['buyer']
+}
+
 function canTransition(from: OrderStatus, to: OrderStatus): boolean {
   return STATUS_FLOW[from]?.includes(to) ?? false
+}
+
+function checkRolePermission(
+  order: Order,
+  targetStatus: OrderStatus,
+  userId: string
+): { allowed: boolean; error?: string } {
+  const key = `${order.status}→${targetStatus}`
+  const allowedRoles = ACTION_ALLOWED_ROLE[key]
+
+  if (!allowedRoles) {
+    return { allowed: false, error: `非法的状态流转: ${order.status} → ${targetStatus}` }
+  }
+
+  const isBuyer = order.buyerId && order.buyerId === userId
+  const isSeller = order.sellerId && order.sellerId === userId
+
+  for (const role of allowedRoles) {
+    if (role === 'either' && (isBuyer || isSeller)) {
+      return { allowed: true }
+    }
+    if (role === 'buyer' && isBuyer) {
+      return { allowed: true }
+    }
+    if (role === 'seller' && isSeller) {
+      return { allowed: true }
+    }
+  }
+
+  const roleDesc = allowedRoles
+    .map(r => (r === 'either' ? '买家或卖家' : r === 'buyer' ? '买家' : '卖家'))
+    .join(' 或 ')
+  return {
+    allowed: false,
+    error: `无权执行此操作，仅${roleDesc}可执行该状态变更`
+  }
 }
 
 export const orderService = {
@@ -64,7 +110,13 @@ export const orderService = {
       itemStmt.free()
 
       const itemStatus = itemObj.status as string
-      if (itemStatus !== 'active' && itemStatus !== 'sold') {
+      if (itemStatus !== 'active') {
+        if (itemStatus === 'sold' || itemStatus === 'archived') {
+          return { error: '该藏品已成交或已下架，无法下单' }
+        }
+        if (itemStatus === 'draft' || itemStatus === 'scheduled') {
+          return { error: '该藏品尚未上架，无法下单' }
+        }
         return { error: '该藏品不可下单' }
       }
 
@@ -209,7 +261,11 @@ export const orderService = {
     })
   },
 
-  async updateStatus(id: string, newStatus: OrderStatus): Promise<Order | { error: string }> {
+  async updateStatus(
+    id: string,
+    newStatus: OrderStatus,
+    userId: string
+  ): Promise<Order | { error: string }> {
     const now = dayjs().toISOString()
 
     return withDb((db) => {
@@ -221,6 +277,11 @@ export const orderService = {
 
       if (!canTransition(order.status, newStatus)) {
         return { error: `无法从 ${order.status} 状态变更为 ${newStatus}` }
+      }
+
+      const permission = checkRolePermission(order, newStatus, userId)
+      if (!permission.allowed) {
+        return { error: permission.error || '无权限执行此操作' }
       }
 
       const timeField = `${newStatus}At`
@@ -235,27 +296,30 @@ export const orderService = {
     })
   },
 
-  async confirm(id: string): Promise<Order | { error: string }> {
-    return this.updateStatus(id, 'confirmed')
+  async confirm(id: string, userId: string): Promise<Order | { error: string }> {
+    return this.updateStatus(id, 'confirmed', userId)
   },
 
-  async markPaid(id: string): Promise<Order | { error: string }> {
-    return this.updateStatus(id, 'paid')
+  async markPaid(id: string, userId: string): Promise<Order | { error: string }> {
+    return this.updateStatus(id, 'paid', userId)
   },
 
-  async markShipped(id: string): Promise<Order | { error: string }> {
-    return this.updateStatus(id, 'shipped')
+  async markShipped(id: string, userId: string): Promise<Order | { error: string }> {
+    return this.updateStatus(id, 'shipped', userId)
   },
 
-  async complete(id: string): Promise<Order | { error: string }> {
-    return this.updateStatus(id, 'completed')
+  async complete(id: string, userId: string): Promise<Order | { error: string }> {
+    return this.updateStatus(id, 'completed', userId)
   },
 
-  async cancel(id: string): Promise<Order | { error: string }> {
-    return this.updateStatus(id, 'cancelled')
+  async cancel(id: string, userId: string): Promise<Order | { error: string }> {
+    return this.updateStatus(id, 'cancelled', userId)
   },
 
-  async getStats(): Promise<{
+  async getStats(
+    userId?: string,
+    role: 'buyer' | 'seller' | 'all' = 'all'
+  ): Promise<{
     total: number
     pending: number
     confirmed: number
@@ -266,7 +330,25 @@ export const orderService = {
     totalAmount: number
   }> {
     return withDb((db) => {
-      const result = db.exec(`
+      const conditions: string[] = []
+      const values: (string | number)[] = []
+
+      if (userId) {
+        if (role === 'buyer') {
+          conditions.push('buyerId = ?')
+          values.push(userId)
+        } else if (role === 'seller') {
+          conditions.push('sellerId = ?')
+          values.push(userId)
+        } else {
+          conditions.push('(buyerId = ? OR sellerId = ?)')
+          values.push(userId, userId)
+        }
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+
+      let sql = `
         SELECT
           COUNT(*) as total,
           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
@@ -277,17 +359,39 @@ export const orderService = {
           SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
           COALESCE(SUM(CASE WHEN status = 'completed' THEN price ELSE 0 END), 0) as totalAmount
         FROM orders
-      `)
-      const row = result[0].values[0]
+        ${whereClause}
+      `
+
+      let rowObj: Record<string, unknown>
+      if (values.length > 0) {
+        const stmt = db.prepare(sql)
+        stmt.bind(values)
+        stmt.step()
+        rowObj = stmt.getAsObject()
+        stmt.free()
+      } else {
+        const result = db.exec(sql)
+        rowObj = {
+          total: result[0].values[0][0],
+          pending: result[0].values[0][1],
+          confirmed: result[0].values[0][2],
+          paid: result[0].values[0][3],
+          shipped: result[0].values[0][4],
+          completed: result[0].values[0][5],
+          cancelled: result[0].values[0][6],
+          totalAmount: result[0].values[0][7]
+        }
+      }
+
       return {
-        total: (row[0] as number) || 0,
-        pending: (row[1] as number) || 0,
-        confirmed: (row[2] as number) || 0,
-        paid: (row[3] as number) || 0,
-        shipped: (row[4] as number) || 0,
-        completed: (row[5] as number) || 0,
-        cancelled: (row[6] as number) || 0,
-        totalAmount: (row[7] as number) || 0
+        total: (rowObj.total as number) || 0,
+        pending: (rowObj.pending as number) || 0,
+        confirmed: (rowObj.confirmed as number) || 0,
+        paid: (rowObj.paid as number) || 0,
+        shipped: (rowObj.shipped as number) || 0,
+        completed: (rowObj.completed as number) || 0,
+        cancelled: (rowObj.cancelled as number) || 0,
+        totalAmount: (rowObj.totalAmount as number) || 0
       }
     })
   }

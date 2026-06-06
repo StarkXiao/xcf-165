@@ -32,7 +32,8 @@ router.post('/', optionalAuthMiddleware, async (ctx) => {
 })
 
 router.get('/stats', authMiddleware, async (ctx) => {
-  const stats = await orderService.getStats()
+  const { role = 'all' } = ctx.query as { role?: 'buyer' | 'seller' | 'all' }
+  const stats = await orderService.getStats(ctx.userId, role)
   ctx.body = {
     code: 200,
     message: 'success',
@@ -83,7 +84,7 @@ router.get('/', authMiddleware, async (ctx) => {
 
 router.post('/:id/confirm', authMiddleware, async (ctx) => {
   const { id } = ctx.params
-  const result = await orderService.confirm(id)
+  const result = await orderService.confirm(id, ctx.userId)
 
   if ('error' in result) {
     ctx.status = 400
@@ -100,7 +101,7 @@ router.post('/:id/confirm', authMiddleware, async (ctx) => {
 
 router.post('/:id/paid', authMiddleware, async (ctx) => {
   const { id } = ctx.params
-  const result = await orderService.markPaid(id)
+  const result = await orderService.markPaid(id, ctx.userId)
 
   if ('error' in result) {
     ctx.status = 400
@@ -117,7 +118,7 @@ router.post('/:id/paid', authMiddleware, async (ctx) => {
 
 router.post('/:id/shipped', authMiddleware, async (ctx) => {
   const { id } = ctx.params
-  const result = await orderService.markShipped(id)
+  const result = await orderService.markShipped(id, ctx.userId)
 
   if ('error' in result) {
     ctx.status = 400
@@ -134,7 +135,7 @@ router.post('/:id/shipped', authMiddleware, async (ctx) => {
 
 router.post('/:id/complete', authMiddleware, async (ctx) => {
   const { id } = ctx.params
-  const result = await orderService.complete(id)
+  const result = await orderService.complete(id, ctx.userId)
 
   if ('error' in result) {
     ctx.status = 400
@@ -151,7 +152,7 @@ router.post('/:id/complete', authMiddleware, async (ctx) => {
 
 router.post('/:id/cancel', authMiddleware, async (ctx) => {
   const { id } = ctx.params
-  const result = await orderService.cancel(id)
+  const result = await orderService.cancel(id, ctx.userId)
 
   if ('error' in result) {
     ctx.status = 400

@@ -132,21 +132,21 @@
             </div>
             <div class="order-actions">
               <button
-                v-if="order.status === 'confirmed'"
+                v-if="canDo(order, 'markPaid')"
                 class="btn btn-primary btn-sm"
                 @click="handleMarkPaid(order)"
               >
                 确认付款
               </button>
               <button
-                v-if="order.status === 'shipped'"
+                v-if="canDo(order, 'complete')"
                 class="btn btn-success btn-sm"
                 @click="handleComplete(order)"
               >
                 确认收货
               </button>
               <button
-                v-if="order.status === 'pending' || order.status === 'confirmed'"
+                v-if="canDo(order, 'cancel')"
                 class="btn btn-danger btn-sm"
                 @click="handleCancel(order)"
               >
@@ -175,10 +175,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useOrderStore } from '@/stores/orderStore'
-import { ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, type Order, type OrderStatus } from '@/types'
+import { useUserStore } from '@/stores/userStore'
+import {
+  ORDER_STATUS_LABEL,
+  ORDER_STATUS_COLOR,
+  type Order,
+  type OrderStatus,
+  canPerformOrderAction
+} from '@/types'
 import dayjs from 'dayjs'
 
 const orderStore = useOrderStore()
+const userStore = useUserStore()
 
 const currentStatus = ref<string>('all')
 const placeholderImage = 'https://picsum.photos/seed/empty/200/200'
@@ -188,8 +196,14 @@ const emptyText = computed(() => {
   return `没有${ORDER_STATUS_LABEL[currentStatus.value as OrderStatus] || ''}的订单`
 })
 
+function canDo(order: Order, action: 'confirm' | 'markPaid' | 'markShipped' | 'complete' | 'cancel') {
+  const uid = userStore.currentUser?.id
+  if (!uid) return false
+  return canPerformOrderAction(order, action, uid)
+}
+
 onMounted(async () => {
-  await orderStore.fetchStats()
+  await orderStore.fetchStats('buyer')
   await fetchOrders()
 })
 

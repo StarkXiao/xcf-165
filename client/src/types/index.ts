@@ -248,6 +248,36 @@ export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
   cancelled: '#64748b'
 }
 
+type OrderAction = 'confirm' | 'markPaid' | 'markShipped' | 'complete' | 'cancel'
+type OrderRole = 'buyer' | 'seller'
+
+const ORDER_ACTION_PERMISSIONS: Record<string, OrderRole[]> = {
+  'pending→confirm': ['seller'],
+  'pending→cancel': ['buyer', 'seller'],
+  'confirmed→markPaid': ['buyer'],
+  'confirmed→cancel': ['buyer', 'seller'],
+  'paid→markShipped': ['seller'],
+  'paid→cancel': ['seller'],
+  'shipped→complete': ['buyer']
+}
+
+export function canPerformOrderAction(
+  order: Order,
+  action: OrderAction,
+  userId: string
+): boolean {
+  const isBuyer = order.buyerId === userId
+  const isSeller = order.sellerId === userId
+
+  const actionKey = `${order.status}→${action}`
+  const allowedRoles = ORDER_ACTION_PERMISSIONS[actionKey]
+
+  if (!allowedRoles) return false
+  if (allowedRoles.includes('buyer') && isBuyer) return true
+  if (allowedRoles.includes('seller') && isSeller) return true
+  return false
+}
+
 export const THEMES: Record<Theme, ThemeConfig> = {
   light: {
     name: 'light',

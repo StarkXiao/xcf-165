@@ -418,21 +418,21 @@
               </div>
               <div class="order-actions">
                 <button
-                  v-if="order.status === 'pending'"
+                  v-if="canDo(order, 'confirm')"
                   class="btn btn-primary btn-sm"
                   @click="handleConfirmOrder(order)"
                 >
                   确认订单
                 </button>
                 <button
-                  v-if="order.status === 'paid'"
+                  v-if="canDo(order, 'markShipped')"
                   class="btn btn-success btn-sm"
                   @click="handleShipOrder(order)"
                 >
                   标记发货
                 </button>
                 <button
-                  v-if="order.status === 'pending' || order.status === 'confirmed'"
+                  v-if="canDo(order, 'cancel')"
                   class="btn btn-danger btn-sm"
                   @click="handleCancelOrder(order)"
                 >
@@ -484,13 +484,15 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useItemStore } from '@/stores/itemStore'
 import { useOrderStore } from '@/stores/orderStore'
+import { useUserStore } from '@/stores/userStore'
 import ItemForm from '@/components/ItemForm.vue'
 import type { Item, ItemCreate, ItemUpdate, ItemDraftCreate, Order } from '@/types'
-import { ORDER_STATUS_LABEL, ORDER_STATUS_COLOR } from '@/types'
+import { ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, canPerformOrderAction } from '@/types'
 import dayjs from 'dayjs'
 
 const itemStore = useItemStore()
 const orderStore = useOrderStore()
+const userStore = useUserStore()
 
 const activeTab = ref<'items' | 'orders'>('items')
 const showCreateModal = ref(false)
@@ -499,6 +501,12 @@ const editingItem = ref<Item | null>(null)
 const currentStatus = ref('all')
 const currentOrderStatus = ref<string>('all')
 const placeholderImage = 'https://picsum.photos/seed/empty/200/200'
+
+function canDo(order: Order, action: 'confirm' | 'markPaid' | 'markShipped' | 'complete' | 'cancel') {
+  const uid = userStore.currentUser?.id
+  if (!uid) return false
+  return canPerformOrderAction(order, action, uid)
+}
 
 const statusMap: Record<string, string> = {
   draft: '草稿',
@@ -553,7 +561,7 @@ onUnmounted(() => {
 
 async function switchToOrders() {
   activeTab.value = 'orders'
-  await orderStore.fetchStats()
+  await orderStore.fetchStats('seller')
   await fetchOrders()
 }
 

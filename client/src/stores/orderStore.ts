@@ -75,8 +75,8 @@ export const useOrderStore = defineStore('order', () => {
     }
   }
 
-  async function fetchStats() {
-    const response = await orderApi.getStats()
+  async function fetchStats(role?: 'buyer' | 'seller' | 'all') {
+    const response = await orderApi.getStats(role)
     stats.value = response.data as OrderStats
     return stats.value
   }
