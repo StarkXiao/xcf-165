@@ -7,6 +7,10 @@ declare module 'koa' {
   }
 }
 
+export interface AuthenticatedContext extends DefaultContext {
+  userId: string
+}
+
 export function extractToken(ctx: DefaultContext): string | undefined {
   const authHeader = ctx.request.headers['authorization']
   if (authHeader && authHeader.startsWith('Bearer ')) {
