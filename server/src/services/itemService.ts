@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import dayjs from 'dayjs'
 import { getDatabase, saveDatabase } from '../database'
-import type { Item, ItemCreate, ItemUpdate, QueryParams, PaginatedResponse, Bid, BidCreate } from '../types'
+import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, Bid, BidCreate } from '../types'
 import type { Database } from 'sql.js'
 
 async function withDb<T>(fn: (db: Database) => T): Promise<T> {
@@ -29,7 +29,8 @@ function rowToItem(row: unknown[]): Item {
     status: row[13] as Item['status'],
     currentPrice: (row[14] as number) ?? 0,
     bidCount: (row[15] as number) ?? 0,
-    soldPrice: row[16] as number | null
+    soldPrice: row[16] as number | null,
+    scheduledAt: (row[17] as string) || null
   }
 }
 
@@ -44,17 +45,40 @@ function rowToBid(row: unknown[]): Bid {
 }
 
 export const itemService = {
+  async activateScheduledItems(): Promise<number> {
+    const now = dayjs().toISOString()
+    return withDb((db) => {
+      const stmt = db.prepare(
+        `UPDATE items SET status = 'active', scheduledAt = NULL, updatedAt = ? WHERE status = 'scheduled' AND scheduledAt IS NOT NULL AND scheduledAt <= ?`
+      )
+      stmt.run([now, now])
+      stmt.free()
+      const result = db.exec(`SELECT changes() as cnt`)
+      return (result[0]?.values[0]?.[0] as number) || 0
+    })
+  },
+
   async create(data: ItemCreate): Promise<Item> {
     const now = dayjs().toISOString()
     const id = uuidv4()
+
+    let status: Item['status'] = 'active'
+    let scheduledAt: string | null = null
+    if (data.scheduledAt) {
+      const scheduledTime = dayjs(data.scheduledAt)
+      if (scheduledTime.isAfter(dayjs())) {
+        status = 'scheduled'
+        scheduledAt = data.scheduledAt
+      }
+    }
 
     return withDb((db) => {
       const stmt = db.prepare(
         `INSERT INTO items (
           id, title, description, story, price, imageUrl,
           emotionTags, category, condition, createdAt, updatedAt, views, likes, status,
-          currentPrice, bidCount, soldPrice
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'active', ?, 0, NULL)`
+          currentPrice, bidCount, soldPrice, scheduledAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 0, NULL, ?)`
       )
       stmt.run([
         id,
@@ -68,7 +92,39 @@ export const itemService = {
         data.condition,
         now,
         now,
-        data.price
+        status,
+        data.price,
+        scheduledAt
+      ])
+      stmt.free()
+
+      const result = db.exec(`SELECT * FROM items WHERE id = '${id}'`)
+      return rowToItem(result[0].values[0])
+    })
+  },
+
+  async createDraft(data: ItemDraftCreate): Promise<Item> {
+    const now = dayjs().toISOString()
+    const id = uuidv4()
+
+    return withDb((db) => {
+      const stmt = db.prepare(
+        `INSERT INTO items (
+          id, title, description, story, price, imageUrl,
+          emotionTags, category, condition, createdAt, updatedAt, views, likes, status,
+          currentPrice, bidCount, soldPrice, scheduledAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'draft', 0, 0, NULL, NULL)`
+      )
+      stmt.run([
+        id,
+        data.title || '',
+        data.description || '',
+        data.story || '',
+        data.price ?? 0,
+        data.imageUrl || '',
+        data.emotionTags || '',
+        data.category || '',
+        data.condition || ''
       ])
       stmt.free()
 
@@ -78,6 +134,7 @@ export const itemService = {
   },
 
   async getById(id: string): Promise<Item | undefined> {
+    await this.activateScheduledItems()
     return withDb((db) => {
       db.run(`UPDATE items SET views = views + 1 WHERE id = '${id}'`)
 
@@ -92,6 +149,7 @@ export const itemService = {
   },
 
   async list(params: QueryParams): Promise<PaginatedResponse<Item>> {
+    await this.activateScheduledItems()
     const {
       page = 1,
       pageSize = 12,
@@ -100,7 +158,7 @@ export const itemService = {
       sortBy = 'createdAt',
       sortOrder = 'desc',
       keyword,
-      status = 'active',
+      status,
       minPrice,
       maxPrice
     } = params
@@ -140,7 +198,7 @@ export const itemService = {
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-    const validSortFields = ['createdAt', 'price', 'views', 'likes']
+    const validSortFields = ['createdAt', 'price', 'views', 'likes', 'scheduledAt']
     const validSortBy = validSortFields.includes(sortBy) ? sortBy : 'createdAt'
     const validSortOrder = sortOrder === 'asc' ? 'ASC' : 'DESC'
 
@@ -197,11 +255,27 @@ export const itemService = {
     const values: unknown[] = []
 
     Object.entries(data).forEach(([key, value]) => {
-      if (value !== undefined) {
+      if (key === 'scheduledAt' && value !== undefined) {
+        const scheduledTime = dayjs(value as string)
+        if (scheduledTime.isAfter(dayjs())) {
+          updates.push('scheduledAt = ?')
+          values.push(value)
+          updates.push(`status = 'scheduled'`)
+        } else {
+          updates.push('scheduledAt = NULL')
+          if (!data.status) {
+            updates.push(`status = 'active'`)
+          }
+        }
+      } else if (value !== undefined) {
         updates.push(`${key} = ?`)
         values.push(value)
       }
     })
+
+    if (data.status === 'active') {
+      updates.push('scheduledAt = NULL')
+    }
 
     updates.push('updatedAt = ?')
     values.push(now)
@@ -237,6 +311,8 @@ export const itemService = {
 
   async getStats(): Promise<{
     total: number
+    draft: number
+    scheduled: number
     active: number
     sold: number
     totalViews: number
@@ -245,10 +321,13 @@ export const itemService = {
     totalBidCount: number
     highestPrice: number
   }> {
+    await this.activateScheduledItems()
     return withDb((db) => {
       const result = db.exec(`
         SELECT
           COUNT(*) as total,
+          SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) as draft,
+          SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as scheduled,
           SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
           SUM(CASE WHEN status = 'sold' THEN 1 ELSE 0 END) as sold,
           COALESCE(SUM(views), 0) as totalViews,
@@ -261,18 +340,21 @@ export const itemService = {
       const row = result[0].values[0]
       return {
         total: row[0] as number,
-        active: row[1] as number,
-        sold: row[2] as number,
-        totalViews: row[3] as number,
-        totalLikes: row[4] as number,
-        totalSoldAmount: row[5] as number,
-        totalBidCount: row[6] as number,
-        highestPrice: row[7] as number
+        draft: row[1] as number,
+        scheduled: row[2] as number,
+        active: row[3] as number,
+        sold: row[4] as number,
+        totalViews: row[5] as number,
+        totalLikes: row[6] as number,
+        totalSoldAmount: row[7] as number,
+        totalBidCount: row[8] as number,
+        highestPrice: row[9] as number
       }
     })
   },
 
   async placeBid(data: BidCreate): Promise<Bid | { error: string }> {
+    await this.activateScheduledItems()
     const now = dayjs().toISOString()
     const id = uuidv4()
 
@@ -284,7 +366,7 @@ export const itemService = {
       const item = rowToItem(itemResult[0].values[0])
 
       if (item.status !== 'active') {
-        return { error: '该拍品已结束竞拍' }
+        return { error: '该拍品已结束竞拍或未上架' }
       }
 
       const minBid = (item.currentPrice || item.price) + 1
@@ -332,7 +414,7 @@ export const itemService = {
       const soldPrice = item.currentPrice || item.price
 
       const stmt = db.prepare(
-        `UPDATE items SET status = 'sold', soldPrice = ?, updatedAt = ? WHERE id = ?`
+        `UPDATE items SET status = 'sold', soldPrice = ?, scheduledAt = NULL, updatedAt = ? WHERE id = ?`
       )
       stmt.run([soldPrice, now, id])
       stmt.free()

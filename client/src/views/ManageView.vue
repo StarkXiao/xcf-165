@@ -21,6 +21,20 @@
           </div>
         </div>
         <div class="stat-card">
+          <span class="stat-icon">📝</span>
+          <div class="stat-content">
+            <span class="stat-value">{{ itemStore.stats.draft }}</span>
+            <span class="stat-label">草稿箱</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon">⏰</span>
+          <div class="stat-content">
+            <span class="stat-value">{{ itemStore.stats.scheduled }}</span>
+            <span class="stat-label">定时上架</span>
+          </div>
+        </div>
+        <div class="stat-card">
           <span class="stat-icon">🔄</span>
           <div class="stat-content">
             <span class="stat-value">{{ itemStore.stats.active }}</span>
@@ -70,6 +84,22 @@
             </button>
             <button
               class="filter-tab"
+              :class="{ active: currentStatus === 'draft' }"
+              @click="handleStatusFilter('draft')"
+            >
+              草稿箱
+              <span v-if="itemStore.stats?.draft" class="tab-badge">{{ itemStore.stats.draft }}</span>
+            </button>
+            <button
+              class="filter-tab"
+              :class="{ active: currentStatus === 'scheduled' }"
+              @click="handleStatusFilter('scheduled')"
+            >
+              定时上架
+              <span v-if="itemStore.stats?.scheduled" class="tab-badge">{{ itemStore.stats.scheduled }}</span>
+            </button>
+            <button
+              class="filter-tab"
               :class="{ active: currentStatus === 'active' }"
               @click="handleStatusFilter('active')"
             >
@@ -98,9 +128,9 @@
       </div>
 
       <div v-else-if="itemStore.items.length === 0" class="empty">
-        <div class="empty-icon">📭</div>
-        <p>还没有藏品</p>
-        <p class="empty-hint">点击上方按钮上架你的第一件藏品</p>
+        <div class="empty-icon">{{ emptyIcon }}</div>
+        <p>{{ emptyText }}</p>
+        <p class="empty-hint">{{ emptyHint }}</p>
       </div>
 
       <div v-else class="items-list">
@@ -114,27 +144,44 @@
           </div>
           <div class="item-info">
             <div class="item-title-row">
-              <h3 class="item-title">{{ item.title }}</h3>
+              <h3 class="item-title">{{ item.title || '（未命名草稿）' }}</h3>
               <span class="item-status" :class="item.status">
                 {{ statusMap[item.status] }}
               </span>
             </div>
-            <p class="item-desc">{{ item.description }}</p>
+            <p class="item-desc">{{ item.description || '暂无描述' }}</p>
             <div class="item-meta">
-              <span class="meta-item">起拍价 ¥{{ item.price }}</span>
-              <span class="meta-item price-current" v-if="item.currentPrice">
+              <span v-if="item.price" class="meta-item">起拍价 ¥{{ item.price }}</span>
+              <span class="meta-item price-current" v-if="item.currentPrice && item.status === 'active'">
                 当前价 <strong>¥{{ item.currentPrice }}</strong>
               </span>
               <span class="meta-item" v-if="item.soldPrice">
                 成交价 <strong class="text-success">¥{{ item.soldPrice }}</strong>
               </span>
-              <span class="meta-item">{{ item.category }}</span>
-              <span class="meta-item">🏷️ {{ item.bidCount || 0 }} 次出价</span>
+              <span class="meta-item" v-if="item.scheduledAt">
+                ⏰ {{ formatScheduledAt(item.scheduledAt) }}上架
+              </span>
+              <span v-if="item.category" class="meta-item">{{ item.category }}</span>
+              <span v-if="item.bidCount" class="meta-item">🏷️ {{ item.bidCount }} 次出价</span>
               <span class="meta-item">👁️ {{ item.views }}</span>
               <span class="meta-item">❤️ {{ item.likes }}</span>
             </div>
           </div>
           <div class="item-actions">
+            <button
+              v-if="item.status === 'draft'"
+              class="btn btn-primary btn-sm"
+              @click="handleEdit(item)"
+            >
+              编辑上架
+            </button>
+            <button
+              v-if="item.status === 'scheduled'"
+              class="btn btn-success btn-sm"
+              @click="handlePublishNow(item)"
+            >
+              立即上架
+            </button>
             <button
               v-if="item.status === 'active'"
               class="btn btn-success btn-sm"
@@ -163,7 +210,7 @@
       <div v-if="showCreateModal || showEditModal" class="modal-overlay" @click.self="closeModal">
         <div class="modal-content">
           <div class="modal-header">
-            <h2>{{ showEditModal ? '编辑藏品' : '上架新藏品' }}</h2>
+            <h2>{{ showEditModal ? (editingItem?.status === 'draft' ? '编辑草稿' : '编辑藏品') : '上架新藏品' }}</h2>
             <button class="btn btn-ghost btn-sm" @click="closeModal">
               ✕
             </button>
@@ -172,6 +219,7 @@
             <ItemForm
               :item="showEditModal ? editingItem : null"
               @submit="handleSubmit"
+              @submit-draft="handleSubmitDraft"
               @cancel="closeModal"
             />
           </div>
@@ -182,10 +230,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useItemStore } from '@/stores/itemStore'
 import ItemForm from '@/components/ItemForm.vue'
-import type { Item, ItemCreate, ItemUpdate } from '@/types'
+import type { Item, ItemCreate, ItemUpdate, ItemDraftCreate } from '@/types'
+import dayjs from 'dayjs'
 
 const itemStore = useItemStore()
 
@@ -196,15 +245,65 @@ const currentStatus = ref('all')
 const placeholderImage = 'https://picsum.photos/seed/empty/200/200'
 
 const statusMap: Record<string, string> = {
+  draft: '草稿',
+  scheduled: '定时上架',
   active: '正在拍卖',
   sold: '已成交',
   archived: '已下架'
 }
 
+const emptyIcon = computed(() => {
+  switch (currentStatus.value) {
+    case 'draft': return '📝'
+    case 'scheduled': return '⏰'
+    case 'sold': return '💰'
+    case 'archived': return '📦'
+    default: return '📭'
+  }
+})
+
+const emptyText = computed(() => {
+  switch (currentStatus.value) {
+    case 'draft': return '还没有草稿'
+    case 'scheduled': return '没有定时上架的藏品'
+    case 'sold': return '还没有成交的藏品'
+    case 'archived': return '还没有下架的藏品'
+    default: return '还没有藏品'
+  }
+})
+
+const emptyHint = computed(() => {
+  if (currentStatus.value === 'draft') return '编辑藏品时可以随时保存为草稿'
+  if (currentStatus.value === 'all') return '点击上方按钮上架你的第一件藏品'
+  return '切换其他状态查看更多藏品'
+})
+
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+
 onMounted(async () => {
   await itemStore.fetchStats()
   await fetchItems()
+
+  refreshTimer = setInterval(async () => {
+    if (currentStatus.value === 'scheduled' || currentStatus.value === 'all') {
+      await itemStore.fetchStats()
+    }
+  }, 30000)
 })
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+})
+
+function formatScheduledAt(iso: string): string {
+  const d = dayjs(iso)
+  const today = dayjs().format('YYYY-MM-DD')
+  const targetDay = d.format('YYYY-MM-DD')
+  if (today === targetDay) {
+    return `今天 ${d.format('HH:mm')}`
+  }
+  return d.format('MM-DD HH:mm')
+}
 
 async function fetchItems() {
   const params: Record<string, unknown> = {}
@@ -229,9 +328,11 @@ function handleEdit(item: Item) {
 }
 
 async function handleDelete(item: Item) {
-  if (!confirm(`确定要删除「${item.title}」吗？`)) return
+  const title = item.title || '未命名草稿'
+  if (!confirm(`确定要删除「${title}」吗？`)) return
   try {
     await itemStore.deleteItem(item.id)
+    await itemStore.fetchStats()
   } catch (e) {
     console.error('删除失败', e)
     alert('删除失败，请重试')
@@ -250,6 +351,18 @@ async function handleMarkSold(item: Item) {
   }
 }
 
+async function handlePublishNow(item: Item) {
+  if (!confirm(`确定将「${item.title || '未命名草稿'}」立即上架吗？`)) return
+  try {
+    await itemStore.updateItem(item.id, { status: 'active' })
+    await itemStore.fetchStats()
+    await fetchItems()
+  } catch (e) {
+    console.error('立即上架失败', e)
+    alert('立即上架失败，请重试')
+  }
+}
+
 function closeModal() {
   showCreateModal.value = false
   showEditModal.value = false
@@ -264,10 +377,27 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
       await itemStore.createItem(data as ItemCreate)
     }
     closeModal()
-    fetchItems()
+    await itemStore.fetchStats()
+    await fetchItems()
   } catch (e) {
     console.error('保存失败', e)
     alert('保存失败，请重试')
+  }
+}
+
+async function handleSubmitDraft(data: ItemDraftCreate) {
+  try {
+    if (showEditModal && editingItem.value) {
+      await itemStore.updateItem(editingItem.value.id, { ...data, status: 'draft' })
+    } else {
+      await itemStore.createDraft(data)
+    }
+    closeModal()
+    await itemStore.fetchStats()
+    await fetchItems()
+  } catch (e) {
+    console.error('保存草稿失败', e)
+    alert('保存草稿失败，请重试')
   }
 }
 </script>
@@ -293,7 +423,7 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
 
 .manage-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 1rem;
   margin-bottom: 2rem;
 }
@@ -321,14 +451,14 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 1.5rem;
+  padding: 1.25rem;
   background: var(--color-surface);
   border-radius: 12px;
   border: 1px solid var(--color-border);
 }
 
 .stat-icon {
-  font-size: 2rem;
+  font-size: 1.75rem;
 }
 
 .stat-content {
@@ -337,13 +467,13 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
 }
 
 .stat-value {
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 700;
   color: var(--color-primary);
 }
 
 .stat-label {
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   color: var(--color-text-secondary);
 }
 
@@ -378,6 +508,9 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
   font-size: 0.875rem;
   font-weight: 500;
   transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .filter-tab:hover {
@@ -389,6 +522,25 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
   background: var(--color-primary);
   color: white;
   border-color: var(--color-primary);
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.filter-tab:not(.active) .tab-badge {
+  background: var(--color-primary);
+  color: white;
 }
 
 .items-list {
@@ -410,6 +562,7 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
   border-radius: 8px;
   overflow: hidden;
   flex-shrink: 0;
+  background: var(--color-surface);
 }
 
 .item-thumb img {
@@ -447,6 +600,16 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
   flex-shrink: 0;
 }
 
+.item-status.draft {
+  background: rgba(251, 191, 36, 0.1);
+  color: #f59e0b;
+}
+
+.item-status.scheduled {
+  background: rgba(139, 92, 246, 0.1);
+  color: #8b5cf6;
+}
+
 .item-status.active {
   background: rgba(34, 197, 94, 0.1);
   color: #22c55e;
@@ -476,6 +639,7 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
   gap: 1rem;
   font-size: 0.75rem;
   color: var(--color-text-secondary);
+  flex-wrap: wrap;
 }
 
 .item-actions {
@@ -487,6 +651,17 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
 .btn-sm {
   padding: 0.375rem 0.75rem;
   font-size: 0.875rem;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: none;
+}
+
+.btn-ghost:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 
 .load-more {
@@ -509,7 +684,7 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
   }
 
   .manage-stats {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 
   .item-row {

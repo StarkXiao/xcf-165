@@ -62,6 +62,9 @@ function initTables(db: Database) {
   if (!colNames.includes('soldPrice')) {
     db.run(`ALTER TABLE items ADD COLUMN soldPrice REAL`)
   }
+  if (!colNames.includes('scheduledAt')) {
+    db.run(`ALTER TABLE items ADD COLUMN scheduledAt TEXT`)
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS bids (

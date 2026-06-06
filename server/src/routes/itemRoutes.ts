@@ -3,9 +3,27 @@ import type { DefaultContext, DefaultState } from 'koa'
 import { itemService } from '../services/itemService'
 import { uploadService } from '../services/uploadService'
 import { EMOTION_TAGS, CATEGORIES, CONDITIONS } from '../types'
-import type { ItemCreate, ItemUpdate, QueryParams, BidCreate } from '../types'
+import type { ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, BidCreate } from '../types'
 
 const router = new Router<DefaultState, DefaultContext>({ prefix: '/api/items' })
+
+type UploadedFile = {
+  name: string
+  type: string
+  path: string
+  size: number
+}
+
+function getUploadedFile(files: unknown): UploadedFile | undefined {
+  if (!files || typeof files !== 'object') return undefined
+
+  const file = (files as Record<string, unknown>).file
+  if (Array.isArray(file)) {
+    return file[0] as UploadedFile | undefined
+  }
+
+  return file as UploadedFile | undefined
+}
 
 router.get('/', async (ctx) => {
   const query = ctx.query as QueryParams
@@ -82,9 +100,20 @@ router.post('/', async (ctx) => {
   }
 })
 
+router.post('/drafts', async (ctx) => {
+  const body = ctx.request.body as ItemDraftCreate
+  const item = await itemService.createDraft(body)
+
+  ctx.status = 201
+  ctx.body = {
+    code: 201,
+    message: '草稿保存成功',
+    data: item
+  }
+})
+
 router.post('/upload', async (ctx) => {
-  const files = ctx.request.files as Record<string, { name: string; type: string; path: string; size: number }>
-  const file = files?.file
+  const file = getUploadedFile(ctx.request.files)
 
   if (!file) {
     ctx.status = 400

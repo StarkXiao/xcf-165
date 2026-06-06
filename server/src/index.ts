@@ -7,11 +7,23 @@ import { config } from './config'
 import { getDatabase, closeDatabase } from './database'
 import { errorHandler, responseHandler } from './middleware/errorHandler'
 import itemRoutes from './routes/itemRoutes'
+import { itemService } from './services/itemService'
 
 async function start() {
   const app = new Koa()
 
   await getDatabase()
+
+  const scheduledInterval = setInterval(async () => {
+    try {
+      const activated = await itemService.activateScheduledItems()
+      if (activated > 0) {
+        console.log(`[定时上架] 已自动上架 ${activated} 件藏品`)
+      }
+    } catch (e) {
+      console.error('[定时上架] 执行失败:', e)
+    }
+  }, 60 * 1000)
 
   app.use(cors({
     origin: (ctx) => {
@@ -69,6 +81,7 @@ async function start() {
 
   process.on('SIGINT', () => {
     console.log('\n正在关闭服务器...')
+    clearInterval(scheduledInterval)
     closeDatabase()
     process.exit(0)
   })

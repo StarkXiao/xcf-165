@@ -25,10 +25,11 @@ export interface Item {
   updatedAt: string
   views: number
   likes: number
-  status: 'active' | 'sold' | 'archived'
+  status: 'draft' | 'scheduled' | 'active' | 'sold' | 'archived'
   currentPrice: number
   bidCount: number
   soldPrice: number | null
+  scheduledAt: string | null
 }
 
 export interface ItemCreate {
@@ -40,10 +41,24 @@ export interface ItemCreate {
   emotionTags: string
   category: string
   condition: string
+  scheduledAt?: string
+}
+
+export interface ItemDraftCreate {
+  title?: string
+  description?: string
+  story?: string
+  price?: number
+  imageUrl?: string
+  emotionTags?: string
+  category?: string
+  condition?: string
+  scheduledAt?: string
 }
 
 export interface ItemUpdate extends Partial<ItemCreate> {
-  status?: 'active' | 'sold' | 'archived'
+  status?: 'draft' | 'scheduled' | 'active' | 'sold' | 'archived'
+  scheduledAt?: string
 }
 
 export interface QueryParams {
@@ -81,6 +96,8 @@ export interface MetaData {
 
 export interface Stats {
   total: number
+  draft: number
+  scheduled: number
   active: number
   sold: number
   totalViews: number

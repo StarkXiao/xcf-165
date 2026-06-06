@@ -2,6 +2,7 @@ import axios from 'axios'
 import type {
   Item,
   ItemCreate,
+  ItemDraftCreate,
   ItemUpdate,
   QueryParams,
   PaginatedResponse,
@@ -47,6 +48,10 @@ export const itemApi = {
 
   create(data: ItemCreate): Promise<ApiResponse<Item>> {
     return api.post('/items', data)
+  },
+
+  createDraft(data: ItemDraftCreate): Promise<ApiResponse<Item>> {
+    return api.post('/items/drafts', data)
   },
 
   update(id: string, data: ItemUpdate): Promise<ApiResponse<Item>> {

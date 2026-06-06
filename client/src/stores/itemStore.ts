@@ -1,7 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { itemApi } from '@/api'
-import type { Item, ItemCreate, ItemUpdate, QueryParams, PaginatedResponse, MetaData, Stats, Bid, BidCreate } from '@/types'
+import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, MetaData, Stats, Bid, BidCreate } from '@/types'
+
+const DRAFT_STORAGE_KEY = 'solo_item_form_draft'
 
 export const useItemStore = defineStore('item', () => {
   const items = ref<Item[]>([])
@@ -90,6 +92,15 @@ export const useItemStore = defineStore('item', () => {
     const response = await itemApi.create(data)
     const newItem = response.data as Item
     items.value = [newItem, ...items.value]
+    clearLocalDraft()
+    return newItem
+  }
+
+  async function createDraft(data: ItemDraftCreate) {
+    const response = await itemApi.createDraft(data)
+    const newItem = response.data as Item
+    items.value = [newItem, ...items.value]
+    clearLocalDraft()
     return newItem
   }
 
@@ -171,6 +182,31 @@ export const useItemStore = defineStore('item', () => {
     return updatedItem
   }
 
+  function saveLocalDraft(data: unknown) {
+    try {
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(data))
+    } catch (e) {
+      console.warn('保存本地草稿失败', e)
+    }
+  }
+
+  function getLocalDraft<T>(): T | null {
+    try {
+      const raw = localStorage.getItem(DRAFT_STORAGE_KEY)
+      return raw ? (JSON.parse(raw) as T) : null
+    } catch (e) {
+      return null
+    }
+  }
+
+  function clearLocalDraft() {
+    try {
+      localStorage.removeItem(DRAFT_STORAGE_KEY)
+    } catch (e) {
+      // ignore
+    }
+  }
+
   function setQueryParams(params: Partial<QueryParams>) {
     queryParams.value = { ...queryParams.value, ...params, page: 1 }
   }
@@ -207,6 +243,7 @@ export const useItemStore = defineStore('item', () => {
     fetchMetaData,
     fetchStats,
     createItem,
+    createDraft,
     updateItem,
     deleteItem,
     likeItem,
@@ -214,6 +251,9 @@ export const useItemStore = defineStore('item', () => {
     fetchBids,
     placeBid,
     markItemAsSold,
+    saveLocalDraft,
+    getLocalDraft,
+    clearLocalDraft,
     setQueryParams,
     resetQueryParams,
     clearCurrentItem

@@ -81,6 +81,26 @@
             <p class="section-content story-content">{{ item.story }}</p>
           </div>
 
+          <div class="detail-section draft-notice-section" v-if="item.status === 'draft'">
+            <div class="draft-notice">
+              <span class="notice-icon">📝</span>
+              <div>
+                <h4 class="notice-title">此藏品为草稿</h4>
+                <p class="notice-desc">该藏品尚未正式上架，请等待卖家完善信息后发布。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section scheduled-notice-section" v-if="item.status === 'scheduled'">
+            <div class="scheduled-notice">
+              <span class="notice-icon">⏰</span>
+              <div>
+                <h4 class="notice-title">此藏品即将上架</h4>
+                <p class="notice-desc">预计上架时间：{{ item.scheduledAt ? dayjs(item.scheduledAt).format('YYYY年MM月DD日 HH:mm') : '待定' }}</p>
+              </div>
+            </div>
+          </div>
+
           <div class="detail-section bid-section" v-if="item.status === 'active'">
             <h3 class="section-label">我要出价</h3>
             <div class="bid-form">
@@ -186,6 +206,8 @@ const emotionTagsList = computed(() => {
 const statusText = computed(() => {
   if (!item.value) return ''
   const map: Record<string, string> = {
+    draft: '草稿',
+    scheduled: '定时上架',
     sold: '已成交',
     archived: '已下架'
   }
@@ -305,6 +327,42 @@ async function handlePlaceBid() {
   color: var(--color-surface);
   font-size: 0.875rem;
   font-weight: 500;
+}
+
+.draft-notice,
+.scheduled-notice {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  border-radius: 12px;
+}
+
+.draft-notice {
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.scheduled-notice {
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.notice-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.notice-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.25rem;
+}
+
+.notice-desc {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
 }
 
 .detail-info {
