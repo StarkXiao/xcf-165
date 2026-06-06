@@ -10,6 +10,9 @@
         <router-link to="/" class="nav-link" :class="{ active: route.path === '/' }">
           拍品展墙
         </router-link>
+        <router-link to="/dashboard" class="nav-link" :class="{ active: route.path === '/dashboard' }">
+          数据看板
+        </router-link>
         <router-link to="/calendar" class="nav-link" :class="{ active: route.path === '/calendar' }">
           情绪日历
         </router-link>

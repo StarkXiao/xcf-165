@@ -29,7 +29,8 @@ import type {
   CommentStats,
   Message,
   MessageQueryParams,
-  MessageStats
+  MessageStats,
+  DashboardData
 } from '@/types'
 
 const TOKEN_KEY = 'solo_auth_token'
@@ -301,6 +302,12 @@ export const messageApi = {
 
   sendAnnouncement(data: { title: string; content: string }): Promise<ApiResponse<Message[]>> {
     return api.post('/messages/announcement', data)
+  }
+}
+
+export const dashboardApi = {
+  getOverview(days?: number): Promise<ApiResponse<DashboardData>> {
+    return api.get('/dashboard/overview', days ? { params: { days } } : undefined)
   }
 }
 

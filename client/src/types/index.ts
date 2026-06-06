@@ -469,3 +469,44 @@ export const THEMES: Record<Theme, ThemeConfig> = {
     accent: '#0284c7'
   }
 }
+
+export interface DashboardItemStats {
+  total: number
+  draft: number
+  scheduled: number
+  active: number
+  sold: number
+  archived: number
+}
+
+export interface DashboardSalesStats {
+  totalOrders: number
+  completedOrders: number
+  cancelledOrders: number
+  totalSalesAmount: number
+  averageOrderAmount: number
+}
+
+export interface DashboardEmotionStats {
+  tag: string
+  count: number
+  percentage: number
+}
+
+export interface DashboardVisitTrend {
+  date: string
+  views: number
+  items: number
+  orders: number
+}
+
+export interface DashboardData {
+  itemStats: DashboardItemStats
+  salesStats: DashboardSalesStats
+  emotionStats: DashboardEmotionStats[]
+  visitTrend: DashboardVisitTrend[]
+  totalViews: number
+  totalLikes: number
+  totalBidCount: number
+  userCount: number
+}
