@@ -10,6 +10,9 @@
         <router-link to="/" class="nav-link" :class="{ active: route.path === '/' }">
           拍品展墙
         </router-link>
+        <router-link to="/orders" class="nav-link" :class="{ active: route.path === '/orders' }">
+          我的订单
+        </router-link>
         <router-link to="/manage" class="nav-link" :class="{ active: route.path === '/manage' }">
           藏品管理
         </router-link>

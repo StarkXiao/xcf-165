@@ -179,6 +179,75 @@ export const CONDITIONS = [
   '全新', '几乎全新', '轻微使用', '明显使用', '有瑕疵'
 ] as const
 
+export type OrderStatus = 'pending' | 'confirmed' | 'paid' | 'shipped' | 'completed' | 'cancelled'
+
+export interface Order {
+  id: string
+  itemId: string
+  itemTitle: string
+  itemImageUrl: string | null
+  sellerId: string | null
+  buyerId: string | null
+  buyerName: string
+  buyerPhone: string | null
+  buyerAddress: string | null
+  price: number
+  status: OrderStatus
+  remark: string | null
+  createdAt: string
+  updatedAt: string
+  confirmedAt: string | null
+  paidAt: string | null
+  shippedAt: string | null
+  completedAt: string | null
+  cancelledAt: string | null
+}
+
+export interface OrderCreate {
+  itemId: string
+  buyerName: string
+  buyerPhone?: string
+  buyerAddress?: string
+  remark?: string
+}
+
+export interface OrderQueryParams {
+  page?: number
+  pageSize?: number
+  status?: OrderStatus
+  keyword?: string
+  role?: 'buyer' | 'seller' | 'all'
+}
+
+export interface OrderStats {
+  total: number
+  pending: number
+  confirmed: number
+  paid: number
+  shipped: number
+  completed: number
+  cancelled: number
+  totalAmount: number
+}
+
+export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
+  pending: '待确认',
+  confirmed: '待付款',
+  paid: '待发货',
+  shipped: '待收货',
+  completed: '已完成',
+  cancelled: '已取消'
+}
+
+export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
+  pending: '#f59e0b',
+  confirmed: '#6366f1',
+  paid: '#8b5cf6',
+  shipped: '#0ea5e9',
+  completed: '#22c55e',
+  cancelled: '#64748b'
+}
+
 export const THEMES: Record<Theme, ThemeConfig> = {
   light: {
     name: 'light',

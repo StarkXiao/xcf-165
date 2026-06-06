@@ -115,6 +115,33 @@ function initTables(db: Database) {
       UNIQUE(userId, itemId)
     )
   `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id TEXT PRIMARY KEY,
+      itemId TEXT NOT NULL,
+      itemTitle TEXT NOT NULL,
+      itemImageUrl TEXT,
+      sellerId TEXT,
+      buyerId TEXT,
+      buyerName TEXT NOT NULL,
+      buyerPhone TEXT,
+      buyerAddress TEXT,
+      price REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      remark TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      confirmedAt TEXT,
+      paidAt TEXT,
+      shippedAt TEXT,
+      completedAt TEXT,
+      cancelledAt TEXT,
+      FOREIGN KEY (itemId) REFERENCES items(id),
+      FOREIGN KEY (sellerId) REFERENCES users(id),
+      FOREIGN KEY (buyerId) REFERENCES users(id)
+    )
+  `)
 }
 
 export function saveDatabase(db: Database): void {

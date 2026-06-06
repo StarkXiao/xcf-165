@@ -158,3 +158,43 @@ export interface AuthPayload {
   token: string
   user: UserPublic
 }
+
+export type OrderStatus = 'pending' | 'confirmed' | 'paid' | 'shipped' | 'completed' | 'cancelled'
+
+export interface Order {
+  id: string
+  itemId: string
+  itemTitle: string
+  itemImageUrl: string | null
+  sellerId: string | null
+  buyerId: string | null
+  buyerName: string
+  buyerPhone: string | null
+  buyerAddress: string | null
+  price: number
+  status: OrderStatus
+  remark: string | null
+  createdAt: string
+  updatedAt: string
+  confirmedAt: string | null
+  paidAt: string | null
+  shippedAt: string | null
+  completedAt: string | null
+  cancelledAt: string | null
+}
+
+export interface OrderCreate {
+  itemId: string
+  buyerName: string
+  buyerPhone?: string
+  buyerAddress?: string
+  remark?: string
+}
+
+export interface OrderQueryParams {
+  page?: number
+  pageSize?: number
+  status?: OrderStatus
+  keyword?: string
+  role?: 'buyer' | 'seller' | 'all'
+}

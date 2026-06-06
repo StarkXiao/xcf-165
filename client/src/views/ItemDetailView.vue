@@ -101,9 +101,26 @@
             </div>
           </div>
 
-          <div class="detail-section bid-section" v-if="item.status === 'active'">
-            <h3 class="section-label">我要出价</h3>
-            <div class="bid-form">
+          <div class="detail-section bid-section" v-if="item.status === 'active' || item.status === 'sold'">
+            <div class="section-tabs">
+              <button
+                class="section-tab"
+                :class="{ active: tradeTab === 'bid' }"
+                @click="tradeTab = 'bid'"
+                v-if="item.status === 'active'"
+              >
+                竞价
+              </button>
+              <button
+                class="section-tab"
+                :class="{ active: tradeTab === 'buy' }"
+                @click="tradeTab = 'buy'"
+              >
+                立即下单
+              </button>
+            </div>
+
+            <div v-if="tradeTab === 'bid' && item.status === 'active'" class="bid-form">
               <div class="form-group">
                 <label class="form-label">您的昵称</label>
                 <input
@@ -125,6 +142,52 @@
               </div>
               <button class="btn btn-primary btn-block" @click="handlePlaceBid" :disabled="bidding">
                 {{ bidding ? '出价中...' : '确认出价' }}
+              </button>
+            </div>
+
+            <div v-if="tradeTab === 'buy'" class="bid-form">
+              <div class="buy-price-hint">
+                <span>下单价格：</span>
+                <strong class="buy-price">¥{{ buyNowPrice }}</strong>
+              </div>
+              <div class="form-group">
+                <label class="form-label">收件人姓名 <span class="required">*</span></label>
+                <input
+                  v-model="orderForm.buyerName"
+                  type="text"
+                  class="form-input"
+                  placeholder="请输入收件人姓名"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label">联系电话</label>
+                <input
+                  v-model="orderForm.buyerPhone"
+                  type="tel"
+                  class="form-input"
+                  placeholder="请输入联系电话"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label">收货地址</label>
+                <textarea
+                  v-model="orderForm.buyerAddress"
+                  class="form-input"
+                  rows="2"
+                  placeholder="请输入收货地址"
+                ></textarea>
+              </div>
+              <div class="form-group">
+                <label class="form-label">备注信息</label>
+                <textarea
+                  v-model="orderForm.remark"
+                  class="form-input"
+                  rows="2"
+                  placeholder="选填，有什么想对卖家说的..."
+                ></textarea>
+              </div>
+              <button class="btn btn-accent btn-block" @click="handleCreateOrder" :disabled="ordering">
+                {{ ordering ? '下单中...' : '确认下单' }}
               </button>
             </div>
           </div>
@@ -192,21 +255,32 @@ import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { useItemStore } from '@/stores/itemStore'
 import { useUserStore } from '@/stores/userStore'
+import { useOrderStore } from '@/stores/orderStore'
 import type { Item } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
 const itemStore = useItemStore()
 const userStore = useUserStore()
+const orderStore = useOrderStore()
 
 const isLiked = ref(false)
 const isFavorited = ref(false)
 const bidding = ref(false)
+const ordering = ref(false)
+const tradeTab = ref<'bid' | 'buy'>('buy')
 const placeholderImage = 'https://picsum.photos/seed/empty/800/600'
 
 const bidForm = reactive({
   bidder: '',
   amount: 0
+})
+
+const orderForm = reactive({
+  buyerName: '',
+  buyerPhone: '',
+  buyerAddress: '',
+  remark: ''
 })
 
 const item = computed<Item | null>(() => itemStore.currentItem)
@@ -239,6 +313,11 @@ const minBidAmount = computed(() => {
   return (item.value.currentPrice || item.value.price) + 1
 })
 
+const buyNowPrice = computed(() => {
+  if (!item.value) return 0
+  return item.value.currentPrice || item.value.price
+})
+
 onMounted(async () => {
   const id = route.params.id as string
   if (id) {
@@ -248,6 +327,7 @@ onMounted(async () => {
       bidForm.amount = minBidAmount.value
       if (userStore.currentUser?.nickname || userStore.currentUser?.username) {
         bidForm.bidder = userStore.currentUser.nickname || userStore.currentUser.username
+        orderForm.buyerName = userStore.currentUser.nickname || userStore.currentUser.username
       }
     }
     if (userStore.isLoggedIn) {
@@ -308,6 +388,32 @@ async function handlePlaceBid() {
     alert(msg)
   } finally {
     bidding.value = false
+  }
+}
+
+async function handleCreateOrder() {
+  if (!item.value) return
+  if (!orderForm.buyerName.trim()) {
+    alert('请输入收件人姓名')
+    return
+  }
+
+  ordering.value = true
+  try {
+    const order = await orderStore.createOrder({
+      itemId: item.value.id,
+      buyerName: orderForm.buyerName.trim(),
+      buyerPhone: orderForm.buyerPhone.trim() || undefined,
+      buyerAddress: orderForm.buyerAddress.trim() || undefined,
+      remark: orderForm.remark.trim() || undefined
+    })
+    alert(`下单成功！订单号：${order.id.slice(0, 8)}...`)
+    router.push('/orders')
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || '下单失败，请重试'
+    alert(msg)
+  } finally {
+    ordering.value = false
   }
 }
 </script>
@@ -591,6 +697,83 @@ async function handlePlaceBid() {
   background: var(--color-background);
   border-radius: 12px;
   border: 1px solid var(--color-border);
+}
+
+.section-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 1rem;
+}
+
+.section-tab {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.section-tab:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.section-tab.active {
+  background: var(--color-primary);
+  color: white;
+}
+
+.buy-price-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  background: var(--color-surface);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+}
+
+.buy-price {
+  color: var(--color-accent);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.required {
+  color: #ef4444;
+}
+
+.btn-accent {
+  background: linear-gradient(135deg, var(--color-accent), #ec4899);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.btn-accent:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(244, 63, 94, 0.3);
+}
+
+.btn-accent:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .bid-form {

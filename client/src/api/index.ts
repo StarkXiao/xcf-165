@@ -16,7 +16,11 @@ import type {
   UserLogin,
   UserUpdate,
   AuthPayload,
-  Favorite
+  Favorite,
+  Order,
+  OrderCreate,
+  OrderQueryParams,
+  OrderStats
 } from '@/types'
 
 const TOKEN_KEY = 'solo_auth_token'
@@ -182,6 +186,44 @@ export const userApi = {
 
   getMyFavorites(params?: QueryParams): Promise<ApiResponse<PaginatedResponse<Item>>> {
     return api.get('/users/me/favorites', { params })
+  }
+}
+
+export const orderApi = {
+  create(data: OrderCreate): Promise<ApiResponse<Order>> {
+    return api.post('/orders', data)
+  },
+
+  getById(id: string): Promise<ApiResponse<Order>> {
+    return api.get(`/orders/${id}`)
+  },
+
+  list(params?: OrderQueryParams): Promise<ApiResponse<PaginatedResponse<Order>>> {
+    return api.get('/orders', { params })
+  },
+
+  getStats(): Promise<ApiResponse<OrderStats>> {
+    return api.get('/orders/stats')
+  },
+
+  confirm(id: string): Promise<ApiResponse<Order>> {
+    return api.post(`/orders/${id}/confirm`)
+  },
+
+  markPaid(id: string): Promise<ApiResponse<Order>> {
+    return api.post(`/orders/${id}/paid`)
+  },
+
+  markShipped(id: string): Promise<ApiResponse<Order>> {
+    return api.post(`/orders/${id}/shipped`)
+  },
+
+  complete(id: string): Promise<ApiResponse<Order>> {
+    return api.post(`/orders/${id}/complete`)
+  },
+
+  cancel(id: string): Promise<ApiResponse<Order>> {
+    return api.post(`/orders/${id}/cancel`)
   }
 }
 
