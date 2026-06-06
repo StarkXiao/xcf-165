@@ -63,6 +63,7 @@ function initTables(db: Database) {
       bidCount INTEGER NOT NULL DEFAULT 0,
       soldPrice REAL,
       scheduledAt TEXT,
+      publishedAt TEXT,
       FOREIGN KEY (ownerId) REFERENCES users(id)
     )
   `)
@@ -83,6 +84,9 @@ function initTables(db: Database) {
   }
   if (!colNames.includes('scheduledAt')) {
     db.run(`ALTER TABLE items ADD COLUMN scheduledAt TEXT`)
+  }
+  if (!colNames.includes('publishedAt')) {
+    db.run(`ALTER TABLE items ADD COLUMN publishedAt TEXT`)
   }
 
   db.run(`

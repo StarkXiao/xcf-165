@@ -34,6 +34,7 @@ export interface Item {
   bidCount: number
   soldPrice: number | null
   scheduledAt: string | null
+  publishedAt: string | null
 }
 
 export interface ItemCreate {

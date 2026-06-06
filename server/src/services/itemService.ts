@@ -32,7 +32,8 @@ function rowToItem(row: unknown[]): Item {
     currentPrice: (row[15] as number) ?? 0,
     bidCount: (row[16] as number) ?? 0,
     soldPrice: row[17] as number | null,
-    scheduledAt: (row[18] as string) || null
+    scheduledAt: (row[18] as string) || null,
+    publishedAt: (row[19] as string) || null
   }
 }
 
@@ -52,7 +53,7 @@ export const itemService = {
     const now = dayjs().toISOString()
     return withDb((db) => {
       const stmt = db.prepare(
-        `UPDATE items SET status = 'active', scheduledAt = NULL, updatedAt = ? WHERE status = 'scheduled' AND scheduledAt IS NOT NULL AND scheduledAt <= ?`
+        `UPDATE items SET status = 'active', publishedAt = COALESCE(publishedAt, scheduledAt), scheduledAt = NULL, updatedAt = ? WHERE status = 'scheduled' AND scheduledAt IS NOT NULL AND scheduledAt <= ?`
       )
       stmt.run([now, now])
       stmt.free()
@@ -67,12 +68,17 @@ export const itemService = {
 
     let status: Item['status'] = 'active'
     let scheduledAt: string | null = null
+    let publishedAt: string | null = null
     if (data.scheduledAt) {
       const scheduledTime = dayjs(data.scheduledAt)
       if (scheduledTime.isAfter(dayjs())) {
         status = 'scheduled'
         scheduledAt = data.scheduledAt
+      } else {
+        publishedAt = now
       }
+    } else {
+      publishedAt = now
     }
 
     return withDb((db) => {
@@ -80,8 +86,8 @@ export const itemService = {
         `INSERT INTO items (
           id, ownerId, title, description, story, price, imageUrl,
           emotionTags, category, condition, createdAt, updatedAt, views, likes, status,
-          currentPrice, bidCount, soldPrice, scheduledAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 0, NULL, ?)`
+          currentPrice, bidCount, soldPrice, scheduledAt, publishedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 0, NULL, ?, ?)`
       )
       stmt.run([
         id,
@@ -98,7 +104,8 @@ export const itemService = {
         now,
         status,
         data.price,
-        scheduledAt
+        scheduledAt,
+        publishedAt
       ])
       stmt.free()
 
@@ -113,11 +120,14 @@ export const itemService = {
 
     let status: Item['status'] = 'draft'
     let scheduledAt: string | null = null
+    let publishedAt: string | null = null
     if (data.scheduledAt) {
       const scheduledTime = dayjs(data.scheduledAt)
       if (scheduledTime.isAfter(dayjs())) {
         status = 'scheduled'
         scheduledAt = data.scheduledAt
+      } else {
+        publishedAt = now
       }
     }
 
@@ -126,8 +136,8 @@ export const itemService = {
         `INSERT INTO items (
           id, ownerId, title, description, story, price, imageUrl,
           emotionTags, category, condition, createdAt, updatedAt, views, likes, status,
-          currentPrice, bidCount, soldPrice, scheduledAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 0, 0, NULL, ?)`
+          currentPrice, bidCount, soldPrice, scheduledAt, publishedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 0, 0, NULL, ?, ?)`
       )
       stmt.run([
         id,
@@ -143,7 +153,8 @@ export const itemService = {
         now,
         now,
         status,
-        scheduledAt
+        scheduledAt,
+        publishedAt
       ])
       stmt.free()
 
@@ -431,6 +442,7 @@ export const itemService = {
     const now = dayjs().toISOString()
     const updates: string[] = []
     const values: unknown[] = []
+    let shouldSetPublishedAt = false
 
     Object.entries(data).forEach(([key, value]) => {
       if (key === 'scheduledAt' && value !== undefined) {
@@ -441,10 +453,18 @@ export const itemService = {
           updates.push(`status = 'scheduled'`)
         } else {
           updates.push('scheduledAt = NULL')
+          shouldSetPublishedAt = true
           if (!data.status) {
             updates.push(`status = 'active'`)
           }
         }
+      } else if (key === 'status' && value !== undefined) {
+        if (value === 'active') {
+          shouldSetPublishedAt = true
+          updates.push('scheduledAt = NULL')
+        }
+        updates.push(`${key} = ?`)
+        values.push(value)
       } else if (value !== undefined) {
         updates.push(`${key} = ?`)
         values.push(value)
@@ -452,7 +472,12 @@ export const itemService = {
     })
 
     if (data.status === 'active') {
-      updates.push('scheduledAt = NULL')
+      shouldSetPublishedAt = true
+    }
+
+    if (shouldSetPublishedAt) {
+      updates.push('publishedAt = COALESCE(publishedAt, ?)')
+      values.push(now)
     }
 
     updates.push('updatedAt = ?')
@@ -607,18 +632,18 @@ export const itemService = {
     const now = dayjs()
     const year = params.year ?? now.year()
     const month = params.month ?? now.month() + 1
-    const { emotionTag, status } = params
+    const { emotionTag } = params
 
     const startDate = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).startOf('month')
     const endDate = startDate.endOf('month')
 
-    const conditions: string[] = ['createdAt >= ?', 'createdAt <= ?']
+    const conditions: string[] = [
+      'status IN (\'active\', \'sold\')',
+      'publishedAt IS NOT NULL',
+      'publishedAt >= ?',
+      'publishedAt <= ?'
+    ]
     const values: unknown[] = [startDate.toISOString(), endDate.toISOString()]
-
-    if (status) {
-      conditions.push('status = ?')
-      values.push(status)
-    }
 
     if (emotionTag) {
       conditions.push('emotionTags LIKE ?')
@@ -630,27 +655,21 @@ export const itemService = {
     return withDb((db) => {
       const dataSql = `
         SELECT * FROM items ${whereClause}
-        ORDER BY createdAt DESC
+        ORDER BY publishedAt DESC
       `
 
       let items: Item[] = []
-      if (values.length > 0) {
-        const dataStmt = db.prepare(dataSql)
-        dataStmt.bind(values as (string | number)[])
-        while (dataStmt.step()) {
-          items.push(rowToItem(dataStmt.get()))
-        }
-        dataStmt.free()
-      } else {
-        const res = db.exec(dataSql)
-        if (res.length > 0) {
-          items = res[0].values.map(rowToItem)
-        }
+      const dataStmt = db.prepare(dataSql)
+      dataStmt.bind(values as (string | number)[])
+      while (dataStmt.step()) {
+        items.push(rowToItem(dataStmt.get()))
       }
+      dataStmt.free()
 
       const daysMap = new Map<string, Item[]>()
       items.forEach((item) => {
-        const dateKey = dayjs(item.createdAt).format('YYYY-MM-DD')
+        const publishDate = item.publishedAt || item.createdAt
+        const dateKey = dayjs(publishDate).format('YYYY-MM-DD')
         if (!daysMap.has(dateKey)) {
           daysMap.set(dateKey, [])
         }
