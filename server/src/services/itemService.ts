@@ -107,13 +107,23 @@ export const itemService = {
     const now = dayjs().toISOString()
     const id = uuidv4()
 
+    let status: Item['status'] = 'draft'
+    let scheduledAt: string | null = null
+    if (data.scheduledAt) {
+      const scheduledTime = dayjs(data.scheduledAt)
+      if (scheduledTime.isAfter(dayjs())) {
+        status = 'scheduled'
+        scheduledAt = data.scheduledAt
+      }
+    }
+
     return withDb((db) => {
       const stmt = db.prepare(
         `INSERT INTO items (
           id, title, description, story, price, imageUrl,
           emotionTags, category, condition, createdAt, updatedAt, views, likes, status,
           currentPrice, bidCount, soldPrice, scheduledAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'draft', 0, 0, NULL, NULL)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 0, 0, NULL, ?)`
       )
       stmt.run([
         id,
@@ -124,7 +134,11 @@ export const itemService = {
         data.imageUrl || '',
         data.emotionTags || '',
         data.category || '',
-        data.condition || ''
+        data.condition || '',
+        now,
+        now,
+        status,
+        scheduledAt
       ])
       stmt.free()
 
