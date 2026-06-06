@@ -22,7 +22,11 @@ import type {
   OrderQueryParams,
   OrderStats,
   CalendarQueryParams,
-  CalendarData
+  CalendarData,
+  Comment,
+  CommentCreate,
+  CommentQueryParams,
+  CommentStats
 } from '@/types'
 
 const TOKEN_KEY = 'solo_auth_token'
@@ -230,6 +234,36 @@ export const orderApi = {
 
   cancel(id: string): Promise<ApiResponse<Order>> {
     return api.post(`/orders/${id}/cancel`)
+  }
+}
+
+export const commentApi = {
+  getByItem(itemId: string): Promise<ApiResponse<Comment[]>> {
+    return api.get(`/comments/item/${itemId}`)
+  },
+
+  create(data: CommentCreate): Promise<ApiResponse<Comment>> {
+    return api.post('/comments', data)
+  },
+
+  list(params?: CommentQueryParams): Promise<ApiResponse<PaginatedResponse<Comment>>> {
+    return api.get('/comments', { params })
+  },
+
+  getStats(): Promise<ApiResponse<CommentStats>> {
+    return api.get('/comments/stats')
+  },
+
+  approve(id: string): Promise<ApiResponse<Comment>> {
+    return api.post(`/comments/${id}/approve`)
+  },
+
+  reject(id: string): Promise<ApiResponse<Comment>> {
+    return api.post(`/comments/${id}/reject`)
+  },
+
+  delete(id: string): Promise<ApiResponse<null>> {
+    return api.delete(`/comments/${id}`)
   }
 }
 

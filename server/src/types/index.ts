@@ -220,3 +220,33 @@ export interface CalendarData {
   totalItems: number
   emotionTagCounts: Record<string, number>
 }
+
+export type CommentStatus = 'pending' | 'approved' | 'rejected'
+
+export interface Comment {
+  id: string
+  itemId: string
+  userId: string | null
+  username: string
+  parentId: string | null
+  content: string
+  status: CommentStatus
+  createdAt: string
+  updatedAt: string
+  replies?: Comment[]
+}
+
+export interface CommentCreate {
+  itemId: string
+  username?: string
+  parentId?: string
+  content: string
+}
+
+export interface CommentQueryParams {
+  page?: number
+  pageSize?: number
+  status?: CommentStatus | 'all'
+  itemId?: string
+  keyword?: string
+}

@@ -237,6 +237,99 @@
             </div>
           </div>
 
+          <div class="detail-section">
+            <h3 class="section-label">买家留言（{{ itemStore.comments.length }}）</h3>
+
+            <div class="comment-form">
+              <div class="form-group" v-if="!userStore.isLoggedIn">
+                <label class="form-label">您的昵称</label>
+                <input
+                  v-model="commentForm.username"
+                  type="text"
+                  class="form-input"
+                  placeholder="请输入您的昵称"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label">
+                  {{ replyingTo ? '回复 @' + replyingTo.username : '留言内容' }}
+                  <span class="required" v-if="!replyingTo"> *</span>
+                </label>
+                <textarea
+                  v-model="commentForm.content"
+                  class="form-input"
+                  rows="3"
+                  :placeholder="replyingTo ? '回复 ' + replyingTo.username + '...' : '对这件藏品有什么想咨询的？'"
+                ></textarea>
+                <div class="form-hint">{{ commentForm.content.length }}/500</div>
+              </div>
+              <div class="comment-form-actions">
+                <button
+                  v-if="replyingTo"
+                  class="btn btn-ghost btn-sm"
+                  @click="cancelReply"
+                >
+                  取消回复
+                </button>
+                <button
+                  class="btn btn-primary"
+                  @click="handleSubmitComment"
+                  :disabled="submittingComment"
+                >
+                  {{ submittingComment ? '提交中...' : (replyingTo ? '发送回复' : '提交留言') }}
+                </button>
+              </div>
+            </div>
+
+            <div v-if="itemStore.commentsLoading" class="loading-inline">
+              <div class="loading-spinner small"></div>
+              <span>加载中...</span>
+            </div>
+            <div v-else-if="itemStore.comments.length === 0" class="comments-empty">
+              暂无留言，快来第一个留言吧！
+            </div>
+            <div v-else class="comments-list">
+              <div
+                v-for="comment in itemStore.comments"
+                :key="comment.id"
+                class="comment-item"
+              >
+                <div class="comment-header">
+                  <div class="comment-user">
+                    <div class="comment-avatar">
+                      {{ comment.username.slice(0, 1) }}
+                    </div>
+                    <div class="comment-user-info">
+                      <span class="comment-username">{{ comment.username }}</span>
+                      <span class="comment-time">{{ formatDateTime(comment.createdAt) }}</span>
+                    </div>
+                  </div>
+                  <button
+                    class="btn btn-ghost btn-sm reply-btn"
+                    @click="startReply(comment)"
+                  >
+                    回复
+                  </button>
+                </div>
+                <div class="comment-content">{{ comment.content }}</div>
+
+                <div v-if="comment.replies && comment.replies.length > 0" class="replies-list">
+                  <div
+                    v-for="reply in comment.replies"
+                    :key="reply.id"
+                    class="reply-item"
+                  >
+                    <div class="reply-header">
+                      <span class="reply-username">{{ reply.username }}</span>
+                      <span class="reply-time">{{ formatDateTime(reply.createdAt) }}</span>
+                    </div>
+                    <div class="reply-content">{{ reply.content }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="detail-actions">
             <button class="btn btn-primary" @click="handleLike" :disabled="isLiked">
               <span>{{ isLiked ? '❤️' : '🤍' }}</span>
@@ -270,7 +363,7 @@ import dayjs from 'dayjs'
 import { useItemStore } from '@/stores/itemStore'
 import { useUserStore } from '@/stores/userStore'
 import { useOrderStore } from '@/stores/orderStore'
-import type { Item } from '@/types'
+import type { Item, Comment } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -282,7 +375,9 @@ const isLiked = ref(false)
 const isFavorited = ref(false)
 const bidding = ref(false)
 const ordering = ref(false)
+const submittingComment = ref(false)
 const tradeTab = ref<'bid' | 'buy'>('buy')
+const replyingTo = ref<Comment | null>(null)
 const placeholderImage = 'https://picsum.photos/seed/empty/800/600'
 
 const bidForm = reactive({
@@ -295,6 +390,11 @@ const orderForm = reactive({
   buyerPhone: '',
   buyerAddress: '',
   remark: ''
+})
+
+const commentForm = reactive({
+  username: '',
+  content: ''
 })
 
 const item = computed<Item | null>(() => itemStore.currentItem)
@@ -346,11 +446,13 @@ onMounted(async () => {
   if (id) {
     await itemStore.fetchItemById(id)
     await itemStore.fetchBids(id)
+    await itemStore.fetchComments(id)
     if (item.value) {
       bidForm.amount = minBidAmount.value
       if (userStore.currentUser?.nickname || userStore.currentUser?.username) {
         bidForm.bidder = userStore.currentUser.nickname || userStore.currentUser.username
         orderForm.buyerName = userStore.currentUser.nickname || userStore.currentUser.username
+        commentForm.username = userStore.currentUser.nickname || userStore.currentUser.username
       }
     }
     if (userStore.isLoggedIn) {
@@ -437,6 +539,58 @@ async function handleCreateOrder() {
     alert(msg)
   } finally {
     ordering.value = false
+  }
+}
+
+function startReply(comment: Comment) {
+  replyingTo.value = comment
+  commentForm.content = ''
+}
+
+function cancelReply() {
+  replyingTo.value = null
+  commentForm.content = ''
+}
+
+async function handleSubmitComment() {
+  if (!item.value) return
+
+  const content = commentForm.content.trim()
+  if (!content) {
+    alert('请输入留言内容')
+    return
+  }
+  if (content.length > 500) {
+    alert('留言内容不能超过500字')
+    return
+  }
+  if (!userStore.isLoggedIn && !commentForm.username.trim()) {
+    alert('请输入您的昵称')
+    return
+  }
+
+  submittingComment.value = true
+  try {
+    await itemStore.createComment({
+      itemId: item.value.id,
+      username: userStore.isLoggedIn
+        ? (userStore.currentUser?.nickname || userStore.currentUser?.username)
+        : commentForm.username.trim(),
+      parentId: replyingTo.value?.id,
+      content
+    })
+    commentForm.content = ''
+    if (!userStore.isLoggedIn) {
+      commentForm.username = ''
+    }
+    replyingTo.value = null
+    alert('留言提交成功，等待审核通过后显示')
+    await itemStore.fetchComments(item.value.id)
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || '提交失败，请重试'
+    alert(msg)
+  } finally {
+    submittingComment.value = false
   }
 }
 </script>
@@ -961,6 +1115,166 @@ async function handleCreateOrder() {
   color: var(--color-accent);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+}
+
+.comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--color-background);
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+
+.form-hint {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+.comment-form-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.comments-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  background: var(--color-background);
+  border-radius: 8px;
+}
+
+.comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.comment-item {
+  padding: 1rem;
+  background: var(--color-background);
+  border-radius: 12px;
+}
+
+.comment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.comment-user {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.comment-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.comment-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.comment-username {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.comment-time {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.reply-btn {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.reply-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.comment-content {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-text);
+  padding: 0.25rem 0 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.replies-list {
+  margin-top: 0.75rem;
+  margin-left: 1rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.reply-item {
+  padding: 0.75rem 0.875rem;
+  background: var(--color-surface);
+  border-radius: 8px;
+}
+
+.reply-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.375rem;
+}
+
+.reply-username {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.reply-time {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.reply-content {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (max-width: 968px) {

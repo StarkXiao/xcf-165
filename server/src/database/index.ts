@@ -148,6 +148,23 @@ function initTables(db: Database) {
       FOREIGN KEY (buyerId) REFERENCES users(id)
     )
   `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS comments (
+      id TEXT PRIMARY KEY,
+      itemId TEXT NOT NULL,
+      userId TEXT,
+      username TEXT NOT NULL,
+      parentId TEXT,
+      content TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (itemId) REFERENCES items(id),
+      FOREIGN KEY (userId) REFERENCES users(id),
+      FOREIGN KEY (parentId) REFERENCES comments(id)
+    )
+  `)
 }
 
 export function saveDatabase(db: Database): void {

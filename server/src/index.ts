@@ -9,6 +9,7 @@ import { errorHandler, responseHandler } from './middleware/errorHandler'
 import itemRoutes from './routes/itemRoutes'
 import userRoutes from './routes/userRoutes'
 import orderRoutes from './routes/orderRoutes'
+import commentRoutes from './routes/commentRoutes'
 import { itemService } from './services/itemService'
 
 async function start() {
@@ -76,6 +77,8 @@ async function start() {
   app.use(userRoutes.allowedMethods())
   app.use(orderRoutes.routes())
   app.use(orderRoutes.allowedMethods())
+  app.use(commentRoutes.routes())
+  app.use(commentRoutes.allowedMethods())
 
   app.use(responseHandler)
 

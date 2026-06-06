@@ -270,6 +270,57 @@ export interface CalendarData {
   emotionTagCounts: Record<string, number>
 }
 
+export type CommentStatus = 'pending' | 'approved' | 'rejected'
+
+export interface Comment {
+  id: string
+  itemId: string
+  userId: string | null
+  username: string
+  parentId: string | null
+  content: string
+  status: CommentStatus
+  createdAt: string
+  updatedAt: string
+  replies?: Comment[]
+  itemTitle?: string
+}
+
+export interface CommentCreate {
+  itemId: string
+  username?: string
+  parentId?: string
+  content: string
+}
+
+export interface CommentQueryParams {
+  page?: number
+  pageSize?: number
+  status?: CommentStatus | 'all'
+  itemId?: string
+  keyword?: string
+}
+
+export interface CommentStats {
+  total: number
+  pending: number
+  approved: number
+  rejected: number
+}
+
+export const COMMENT_STATUS_LABEL: Record<CommentStatus | 'all', string> = {
+  all: '全部',
+  pending: '待审核',
+  approved: '已通过',
+  rejected: '已拒绝'
+}
+
+export const COMMENT_STATUS_COLOR: Record<CommentStatus, string> = {
+  pending: '#f59e0b',
+  approved: '#22c55e',
+  rejected: '#ef4444'
+}
+
 type OrderAction = 'confirm' | 'markPaid' | 'markShipped' | 'complete' | 'cancel'
 type OrderRole = 'buyer' | 'seller'
 

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { itemApi } from '@/api'
-import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, MetaData, Stats, Bid, BidCreate, CalendarData, CalendarQueryParams } from '@/types'
+import { itemApi, commentApi } from '@/api'
+import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, MetaData, Stats, Bid, BidCreate, CalendarData, CalendarQueryParams, Comment, CommentCreate, CommentStats, CommentQueryParams } from '@/types'
 
 const DRAFT_STORAGE_KEY = 'solo_item_form_draft'
 
@@ -9,16 +9,27 @@ export const useItemStore = defineStore('item', () => {
   const items = ref<Item[]>([])
   const currentItem = ref<Item | null>(null)
   const bids = ref<Bid[]>([])
+  const comments = ref<Comment[]>([])
+  const allComments = ref<Comment[]>([])
   const loading = ref(false)
   const bidsLoading = ref(false)
+  const commentsLoading = ref(false)
+  const allCommentsLoading = ref(false)
   const pagination = ref({
     page: 1,
     pageSize: 12,
     total: 0,
     totalPages: 0
   })
+  const commentsPagination = ref({
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 0
+  })
   const metaData = ref<MetaData | null>(null)
   const stats = ref<Stats | null>(null)
+  const commentStats = ref<CommentStats | null>(null)
   const queryParams = ref<QueryParams>({
     page: 1,
     pageSize: 12,
@@ -26,10 +37,17 @@ export const useItemStore = defineStore('item', () => {
     sortOrder: 'desc',
     status: 'active'
   })
+  const commentQueryParams = ref<CommentQueryParams>({
+    page: 1,
+    pageSize: 20,
+    status: 'all'
+  })
 
   const calendarData = ref<CalendarData | null>(null)
   const calendarLoading = ref(false)
   const calendarQueryParams = ref<CalendarQueryParams>({})
+
+  const hasMoreComments = computed(() => commentsPagination.value.page < commentsPagination.value.totalPages)
 
   const hasMore = computed(() => pagination.value.page < pagination.value.totalPages)
 
@@ -252,17 +270,124 @@ export const useItemStore = defineStore('item', () => {
     calendarQueryParams.value = {}
   }
 
+  async function fetchComments(itemId: string) {
+    commentsLoading.value = true
+    try {
+      const response = await commentApi.getByItem(itemId)
+      comments.value = response.data as Comment[]
+      return comments.value
+    } finally {
+      commentsLoading.value = false
+    }
+  }
+
+  async function createComment(data: CommentCreate) {
+    const response = await commentApi.create(data)
+    return response.data as Comment
+  }
+
+  async function fetchAllComments(params?: CommentQueryParams) {
+    allCommentsLoading.value = true
+    try {
+      if (params) {
+        commentQueryParams.value = { ...commentQueryParams.value, ...params }
+      }
+      const response = await commentApi.list(commentQueryParams.value)
+      const data = response.data as PaginatedResponse<Comment>
+      allComments.value = data.data
+      commentsPagination.value = {
+        page: data.page,
+        pageSize: data.pageSize,
+        total: data.total,
+        totalPages: data.totalPages
+      }
+      return allComments.value
+    } finally {
+      allCommentsLoading.value = false
+    }
+  }
+
+  async function fetchMoreComments() {
+    if (!hasMoreComments.value || allCommentsLoading.value) return
+
+    allCommentsLoading.value = true
+    try {
+      const nextPage = commentsPagination.value.page + 1
+      const response = await commentApi.list({ ...commentQueryParams.value, page: nextPage })
+      const data = response.data as PaginatedResponse<Comment>
+      allComments.value = [...allComments.value, ...data.data]
+      commentsPagination.value.page = data.page
+    } finally {
+      allCommentsLoading.value = false
+    }
+  }
+
+  async function fetchCommentStats() {
+    const response = await commentApi.getStats()
+    commentStats.value = response.data as CommentStats
+    return commentStats.value
+  }
+
+  async function approveComment(id: string) {
+    const response = await commentApi.approve(id)
+    const updated = response.data as Comment
+    const index = allComments.value.findIndex(c => c.id === id)
+    if (index !== -1) {
+      allComments.value[index] = { ...allComments.value[index], ...updated }
+    }
+    return updated
+  }
+
+  async function rejectComment(id: string) {
+    const response = await commentApi.reject(id)
+    const updated = response.data as Comment
+    const index = allComments.value.findIndex(c => c.id === id)
+    if (index !== -1) {
+      allComments.value[index] = { ...allComments.value[index], ...updated }
+    }
+    return updated
+  }
+
+  async function deleteComment(id: string) {
+    await commentApi.delete(id)
+    allComments.value = allComments.value.filter(c => c.id !== id)
+  }
+
+  function setCommentQueryParams(params: Partial<CommentQueryParams>) {
+    commentQueryParams.value = { ...commentQueryParams.value, ...params, page: 1 }
+  }
+
+  function resetCommentQueryParams() {
+    commentQueryParams.value = {
+      page: 1,
+      pageSize: 20,
+      status: 'all'
+    }
+  }
+
+  function clearComments() {
+    comments.value = []
+  }
+
   return {
     items,
     currentItem,
     bids,
+    comments,
+    allComments,
     loading,
     bidsLoading,
+    commentsLoading,
+    allCommentsLoading,
     pagination,
+    commentsPagination,
     metaData,
     stats,
+    commentStats,
     queryParams,
+    commentQueryParams,
     hasMore,
+    hasMoreComments,
     calendarData,
     calendarLoading,
     calendarQueryParams,
@@ -288,6 +413,17 @@ export const useItemStore = defineStore('item', () => {
     clearCurrentItem,
     fetchCalendar,
     setCalendarQueryParams,
-    resetCalendarQueryParams
+    resetCalendarQueryParams,
+    fetchComments,
+    createComment,
+    fetchAllComments,
+    fetchMoreComments,
+    fetchCommentStats,
+    approveComment,
+    rejectComment,
+    deleteComment,
+    setCommentQueryParams,
+    resetCommentQueryParams,
+    clearComments
   }
 })

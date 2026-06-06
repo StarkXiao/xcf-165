@@ -16,6 +16,16 @@
         >
           🛒 订单管理
         </button>
+        <button
+          class="manage-tab"
+          :class="{ active: activeTab === 'comments' }"
+          @click="switchToComments"
+        >
+          💬 留言管理
+          <span v-if="itemStore.commentStats?.pending" class="tab-badge">
+            {{ itemStore.commentStats.pending }}
+          </span>
+        </button>
       </div>
 
       <div v-if="activeTab === 'items'">
@@ -456,6 +466,182 @@
         </div>
       </div>
 
+      <div v-if="activeTab === 'comments'">
+        <div class="manage-header">
+          <div>
+            <h1 class="page-title">留言管理</h1>
+            <p class="page-subtitle">审核买家留言，删除不当内容</p>
+          </div>
+        </div>
+
+        <div class="manage-stats" v-if="itemStore.commentStats">
+          <div class="stat-card">
+            <span class="stat-icon">💬</span>
+            <div class="stat-content">
+              <span class="stat-value">{{ itemStore.commentStats.total }}</span>
+              <span class="stat-label">留言总数</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">⏳</span>
+            <div class="stat-content">
+              <span class="stat-value">{{ itemStore.commentStats.pending }}</span>
+              <span class="stat-label">待审核</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">✅</span>
+            <div class="stat-content">
+              <span class="stat-value">{{ itemStore.commentStats.approved }}</span>
+              <span class="stat-label">已通过</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">❌</span>
+            <div class="stat-content">
+              <span class="stat-value">{{ itemStore.commentStats.rejected }}</span>
+              <span class="stat-label">已拒绝</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="manage-filters">
+          <div class="filter-group">
+            <label class="filter-label">审核状态</label>
+            <div class="filter-tabs">
+              <button
+                class="filter-tab"
+                :class="{ active: currentCommentStatus === 'all' }"
+                @click="handleCommentStatusFilter('all')"
+              >
+                全部
+                <span v-if="itemStore.commentStats" class="tab-count">
+                  {{ itemStore.commentStats.total }}
+                </span>
+              </button>
+              <button
+                class="filter-tab"
+                :class="{ active: currentCommentStatus === 'pending' }"
+                @click="handleCommentStatusFilter('pending')"
+              >
+                待审核
+                <span v-if="itemStore.commentStats?.pending" class="tab-badge">
+                  {{ itemStore.commentStats.pending }}
+                </span>
+              </button>
+              <button
+                class="filter-tab"
+                :class="{ active: currentCommentStatus === 'approved' }"
+                @click="handleCommentStatusFilter('approved')"
+              >
+                已通过
+              </button>
+              <button
+                class="filter-tab"
+                :class="{ active: currentCommentStatus === 'rejected' }"
+                @click="handleCommentStatusFilter('rejected')"
+              >
+                已拒绝
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="itemStore.allCommentsLoading && itemStore.allComments.length === 0" class="loading">
+          <div class="loading-spinner"></div>
+        </div>
+
+        <div v-else-if="itemStore.allComments.length === 0" class="empty">
+          <div class="empty-icon">💬</div>
+          <p>暂无留言</p>
+          <p class="empty-hint">有买家留言后会在这里显示</p>
+        </div>
+
+        <div v-else class="comments-list-manage">
+          <div
+            v-for="comment in itemStore.allComments"
+            :key="comment.id"
+            class="comment-card card"
+          >
+            <div class="comment-manage-header">
+              <div class="comment-manage-user">
+                <div class="comment-avatar-sm">
+                  {{ comment.username.slice(0, 1) }}
+                </div>
+                <div>
+                  <div class="comment-manage-username">
+                    {{ comment.username }}
+                    <span
+                      v-if="comment.parentId"
+                      class="reply-label"
+                    >
+                      回复
+                    </span>
+                  </div>
+                  <div class="comment-manage-time">
+                    {{ formatDateTime(comment.createdAt) }}
+                  </div>
+                </div>
+              </div>
+              <span
+                class="comment-status"
+                :style="{
+                  color: COMMENT_STATUS_COLOR[comment.status],
+                  background: COMMENT_STATUS_COLOR[comment.status] + '15'
+                }"
+              >
+                {{ COMMENT_STATUS_LABEL[comment.status] }}
+              </span>
+            </div>
+            <div class="comment-manage-item">
+              <router-link
+                :to="`/item/${comment.itemId}`"
+                class="comment-item-link"
+              >
+                📦 {{ comment.itemTitle || '关联藏品' }}
+              </router-link>
+            </div>
+            <div class="comment-manage-content">
+              {{ comment.content }}
+            </div>
+            <div class="comment-manage-actions">
+              <button
+                v-if="comment.status !== 'approved'"
+                class="btn btn-success btn-sm"
+                @click="handleApproveComment(comment)"
+              >
+                通过
+              </button>
+              <button
+                v-if="comment.status !== 'rejected'"
+                class="btn btn-warning btn-sm"
+                @click="handleRejectComment(comment)"
+              >
+                拒绝
+              </button>
+              <button
+                class="btn btn-danger btn-sm"
+                @click="handleDeleteComment(comment)"
+              >
+                删除
+              </button>
+              <router-link
+                :to="`/item/${comment.itemId}`"
+                class="btn btn-secondary btn-sm"
+              >
+                查看藏品
+              </router-link>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="itemStore.hasMoreComments && !itemStore.allCommentsLoading" class="load-more">
+          <button class="btn btn-secondary" @click="handleLoadMoreComments">
+            加载更多
+          </button>
+        </div>
+      </div>
+
       <transition name="fade">
         <div v-if="showCreateModal || showEditModal" class="modal-overlay" @click.self="closeModal">
           <div class="modal-content">
@@ -486,20 +672,21 @@ import { useItemStore } from '@/stores/itemStore'
 import { useOrderStore } from '@/stores/orderStore'
 import { useUserStore } from '@/stores/userStore'
 import ItemForm from '@/components/ItemForm.vue'
-import type { Item, ItemCreate, ItemUpdate, ItemDraftCreate, Order } from '@/types'
-import { ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, canPerformOrderAction } from '@/types'
+import type { Item, ItemCreate, ItemUpdate, ItemDraftCreate, Order, Comment, CommentStatus } from '@/types'
+import { ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, canPerformOrderAction, COMMENT_STATUS_LABEL, COMMENT_STATUS_COLOR } from '@/types'
 import dayjs from 'dayjs'
 
 const itemStore = useItemStore()
 const orderStore = useOrderStore()
 const userStore = useUserStore()
 
-const activeTab = ref<'items' | 'orders'>('items')
+const activeTab = ref<'items' | 'orders' | 'comments'>('items')
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const editingItem = ref<Item | null>(null)
 const currentStatus = ref('all')
 const currentOrderStatus = ref<string>('all')
+const currentCommentStatus = ref<CommentStatus | 'all'>('all')
 const placeholderImage = 'https://picsum.photos/seed/empty/200/200'
 
 function canDo(order: Order, action: 'confirm' | 'markPaid' | 'markShipped' | 'complete' | 'cancel') {
@@ -546,11 +733,15 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
   await itemStore.fetchStats()
+  await itemStore.fetchCommentStats()
   await fetchItems()
 
   refreshTimer = setInterval(async () => {
     if (currentStatus.value === 'scheduled' || currentStatus.value === 'all') {
       await itemStore.fetchStats()
+    }
+    if (activeTab.value === 'comments') {
+      await itemStore.fetchCommentStats()
     }
   }, 30000)
 })
@@ -728,6 +919,62 @@ async function handleSubmitDraft(data: ItemDraftCreate) {
   } catch (e) {
     console.error('保存草稿失败', e)
     alert('保存草稿失败，请重试')
+  }
+}
+
+async function switchToComments() {
+  activeTab.value = 'comments'
+  await itemStore.fetchCommentStats()
+  await fetchAllComments()
+}
+
+async function fetchAllComments() {
+  const params: Record<string, unknown> = {}
+  if (currentCommentStatus.value !== 'all') {
+    params.status = currentCommentStatus.value
+  }
+  await itemStore.fetchAllComments(params)
+}
+
+function handleCommentStatusFilter(status: CommentStatus | 'all') {
+  currentCommentStatus.value = status
+  fetchAllComments()
+}
+
+function handleLoadMoreComments() {
+  itemStore.fetchMoreComments()
+}
+
+async function handleApproveComment(comment: Comment) {
+  if (!confirm(`确定通过这条留言吗？\n\n"${comment.content.slice(0, 50)}${comment.content.length > 50 ? '...' : ''}"`)) return
+  try {
+    await itemStore.approveComment(comment.id)
+    await itemStore.fetchCommentStats()
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || '操作失败，请重试'
+    alert(msg)
+  }
+}
+
+async function handleRejectComment(comment: Comment) {
+  if (!confirm(`确定拒绝这条留言吗？\n\n"${comment.content.slice(0, 50)}${comment.content.length > 50 ? '...' : ''}"`)) return
+  try {
+    await itemStore.rejectComment(comment.id)
+    await itemStore.fetchCommentStats()
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || '操作失败，请重试'
+    alert(msg)
+  }
+}
+
+async function handleDeleteComment(comment: Comment) {
+  if (!confirm(`确定删除这条留言吗？此操作不可恢复。\n\n"${comment.content.slice(0, 50)}${comment.content.length > 50 ? '...' : ''}"`)) return
+  try {
+    await itemStore.deleteComment(comment.id)
+    await itemStore.fetchCommentStats()
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || '删除失败，请重试'
+    alert(msg)
   }
 }
 </script>
@@ -1298,6 +1545,127 @@ async function handleSubmitDraft(data: ItemDraftCreate) {
   }
 }
 
+.btn-warning {
+  background: #f59e0b;
+  color: white;
+  border: 1px solid #f59e0b;
+}
+
+.btn-warning:hover {
+  background: #d97706;
+  border-color: #d97706;
+}
+
+.comments-list-manage {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.comment-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.comment-manage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: var(--color-background);
+  border-bottom: 1px solid var(--color-border);
+  gap: 1rem;
+}
+
+.comment-manage-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.comment-avatar-sm {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.comment-manage-username {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.reply-label {
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.comment-manage-time {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin-top: 0.125rem;
+}
+
+.comment-status {
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.comment-manage-item {
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.comment-item-link {
+  font-size: 0.875rem;
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.comment-item-link:hover {
+  text-decoration: underline;
+}
+
+.comment-manage-content {
+  padding: 1rem 1.25rem;
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.comment-manage-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--color-background);
+  border-top: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+
 @media (max-width: 768px) {
   .manage-header {
     flex-direction: column;
@@ -1324,20 +1692,26 @@ async function handleSubmitDraft(data: ItemDraftCreate) {
     height: 160px;
   }
 
-  .item-actions, .order-actions, .order-footer {
+  .item-actions, .order-actions, .order-footer, .comment-manage-actions {
     width: 100%;
     flex-direction: column;
     align-items: stretch;
   }
 
   .item-actions .btn,
-  .order-actions .btn {
+  .order-actions .btn,
+  .comment-manage-actions .btn {
     width: 100%;
     justify-content: center;
   }
 
   .order-footer {
     gap: 0.75rem;
+  }
+
+  .comment-manage-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>
