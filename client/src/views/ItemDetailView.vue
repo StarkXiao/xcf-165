@@ -146,49 +146,63 @@
             </div>
 
             <div v-if="tradeTab === 'buy'" class="bid-form">
-              <div class="buy-price-hint">
-                <span>下单价格：</span>
-                <strong class="buy-price">¥{{ buyNowPrice }}</strong>
+              <div v-if="!userStore.isLoggedIn" class="login-required">
+                <div class="login-icon">🔒</div>
+                <p class="login-text">下单需要登录账户，确保交易可追踪</p>
+                <button class="btn btn-accent btn-block" @click="goLogin">去登录 / 注册</button>
               </div>
-              <div class="form-group">
-                <label class="form-label">收件人姓名 <span class="required">*</span></label>
-                <input
-                  v-model="orderForm.buyerName"
-                  type="text"
-                  class="form-input"
-                  placeholder="请输入收件人姓名"
-                />
-              </div>
-              <div class="form-group">
-                <label class="form-label">联系电话</label>
-                <input
-                  v-model="orderForm.buyerPhone"
-                  type="tel"
-                  class="form-input"
-                  placeholder="请输入联系电话"
-                />
-              </div>
-              <div class="form-group">
-                <label class="form-label">收货地址</label>
-                <textarea
-                  v-model="orderForm.buyerAddress"
-                  class="form-input"
-                  rows="2"
-                  placeholder="请输入收货地址"
-                ></textarea>
-              </div>
-              <div class="form-group">
-                <label class="form-label">备注信息</label>
-                <textarea
-                  v-model="orderForm.remark"
-                  class="form-input"
-                  rows="2"
-                  placeholder="选填，有什么想对卖家说的..."
-                ></textarea>
-              </div>
-              <button class="btn btn-accent btn-block" @click="handleCreateOrder" :disabled="ordering">
-                {{ ordering ? '下单中...' : '确认下单' }}
-              </button>
+              <template v-else>
+                <div v-if="isOwnItem" class="own-item-hint">
+                  <span>⚠️</span> 不能对自己上架的藏品下单
+                </div>
+                <div class="buy-price-hint">
+                  <span>下单价格：</span>
+                  <strong class="buy-price">¥{{ buyNowPrice }}</strong>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">收件人姓名 <span class="required">*</span></label>
+                  <input
+                    v-model="orderForm.buyerName"
+                    type="text"
+                    class="form-input"
+                    placeholder="请输入收件人姓名"
+                  />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">联系电话</label>
+                  <input
+                    v-model="orderForm.buyerPhone"
+                    type="tel"
+                    class="form-input"
+                    placeholder="请输入联系电话"
+                  />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">收货地址</label>
+                  <textarea
+                    v-model="orderForm.buyerAddress"
+                    class="form-input"
+                    rows="2"
+                    placeholder="请输入收货地址"
+                  ></textarea>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">备注信息</label>
+                  <textarea
+                    v-model="orderForm.remark"
+                    class="form-input"
+                    rows="2"
+                    placeholder="选填，有什么想对卖家说的..."
+                  ></textarea>
+                </div>
+                <button
+                  class="btn btn-accent btn-block"
+                  @click="handleCreateOrder"
+                  :disabled="ordering || isOwnItem"
+                >
+                  {{ ordering ? '下单中...' : '确认下单' }}
+                </button>
+              </template>
             </div>
           </div>
 
@@ -318,6 +332,15 @@ const buyNowPrice = computed(() => {
   return item.value.currentPrice || item.value.price
 })
 
+const isOwnItem = computed(() => {
+  if (!item.value || !userStore.currentUser) return false
+  return item.value.ownerId === userStore.currentUser.id
+})
+
+function goLogin() {
+  router.push('/login')
+}
+
 onMounted(async () => {
   const id = route.params.id as string
   if (id) {
@@ -393,8 +416,8 @@ async function handlePlaceBid() {
 
 async function handleCreateOrder() {
   if (!item.value) return
-  if (!orderForm.buyerName.trim()) {
-    alert('请输入收件人姓名')
+  if (!userStore.isLoggedIn) {
+    goLogin()
     return
   }
 
@@ -402,7 +425,7 @@ async function handleCreateOrder() {
   try {
     const order = await orderStore.createOrder({
       itemId: item.value.id,
-      buyerName: orderForm.buyerName.trim(),
+      buyerName: orderForm.buyerName.trim() || undefined,
       buyerPhone: orderForm.buyerPhone.trim() || undefined,
       buyerAddress: orderForm.buyerAddress.trim() || undefined,
       remark: orderForm.remark.trim() || undefined
@@ -780,6 +803,40 @@ async function handleCreateOrder() {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.login-required {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+  text-align: center;
+  background: var(--color-background);
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+}
+
+.login-icon {
+  font-size: 2.5rem;
+}
+
+.login-text {
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.own-item-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: #b45309;
 }
 
 .form-group {

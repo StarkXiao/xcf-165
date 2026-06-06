@@ -232,6 +232,8 @@ async function handleMarkPaid(order: Order) {
   if (!confirm(`确认已付款 ¥${order.price}？`)) return
   try {
     await orderStore.markOrderPaid(order.id)
+    await orderStore.fetchStats('buyer')
+    await fetchOrders()
     alert('已标记为已付款')
   } catch (e: any) {
     const msg = e?.response?.data?.message || '操作失败，请重试'
@@ -243,6 +245,8 @@ async function handleComplete(order: Order) {
   if (!confirm('确认已收到商品？')) return
   try {
     await orderStore.completeOrder(order.id)
+    await orderStore.fetchStats('buyer')
+    await fetchOrders()
     alert('订单已完成')
   } catch (e: any) {
     const msg = e?.response?.data?.message || '操作失败，请重试'
@@ -254,6 +258,8 @@ async function handleCancel(order: Order) {
   if (!confirm('确定要取消该订单吗？')) return
   try {
     await orderStore.cancelOrder(order.id)
+    await orderStore.fetchStats('buyer')
+    await fetchOrders()
     alert('订单已取消')
   } catch (e: any) {
     const msg = e?.response?.data?.message || '操作失败，请重试'

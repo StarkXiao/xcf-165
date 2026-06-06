@@ -658,7 +658,8 @@ async function handleConfirmOrder(order: Order) {
   if (!confirm('确定确认该订单？')) return
   try {
     await orderStore.confirmOrder(order.id)
-    await orderStore.fetchStats()
+    await orderStore.fetchStats('seller')
+    await fetchOrders()
     alert('订单已确认')
   } catch (e: any) {
     const msg = e?.response?.data?.message || '操作失败，请重试'
@@ -670,7 +671,8 @@ async function handleShipOrder(order: Order) {
   if (!confirm('确定已发货？')) return
   try {
     await orderStore.markOrderShipped(order.id)
-    await orderStore.fetchStats()
+    await orderStore.fetchStats('seller')
+    await fetchOrders()
     alert('已标记为发货')
   } catch (e: any) {
     const msg = e?.response?.data?.message || '操作失败，请重试'
@@ -682,7 +684,8 @@ async function handleCancelOrder(order: Order) {
   if (!confirm('确定取消该订单？')) return
   try {
     await orderStore.cancelOrder(order.id)
-    await orderStore.fetchStats()
+    await orderStore.fetchStats('seller')
+    await fetchOrders()
     alert('订单已取消')
   } catch (e: any) {
     const msg = e?.response?.data?.message || '操作失败，请重试'

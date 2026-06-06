@@ -205,7 +205,7 @@ export interface Order {
 
 export interface OrderCreate {
   itemId: string
-  buyerName: string
+  buyerName?: string
   buyerPhone?: string
   buyerAddress?: string
   remark?: string

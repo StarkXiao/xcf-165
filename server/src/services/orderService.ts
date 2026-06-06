@@ -95,11 +95,24 @@ function checkRolePermission(
 }
 
 export const orderService = {
-  async create(data: OrderCreate, buyerId?: string): Promise<Order | { error: string }> {
+  async create(data: OrderCreate, buyerId: string): Promise<Order | { error: string }> {
     const now = dayjs().toISOString()
     const id = uuidv4()
 
     return withDb((db) => {
+      const userStmt = db.prepare(`SELECT username, nickname FROM users WHERE id = ?`)
+      userStmt.bind([buyerId])
+      let buyerNameFromDb = ''
+      if (userStmt.step()) {
+        const userObj = userStmt.getAsObject() as Record<string, unknown>
+        buyerNameFromDb = (userObj.nickname as string) || (userObj.username as string) || ''
+      }
+      userStmt.free()
+
+      if (!buyerNameFromDb) {
+        return { error: '用户信息无效，请重新登录' }
+      }
+
       const itemStmt = db.prepare(`SELECT * FROM items WHERE id = ?`)
       itemStmt.bind([data.itemId])
       if (!itemStmt.step()) {
@@ -120,6 +133,11 @@ export const orderService = {
         return { error: '该藏品不可下单' }
       }
 
+      const ownerId = (itemObj.ownerId as string) || null
+      if (ownerId && ownerId === buyerId) {
+        return { error: '不能对自己上架的藏品下单' }
+      }
+
       const pendingStmt = db.prepare(
         `SELECT COUNT(*) as cnt FROM orders WHERE itemId = ? AND status IN ('pending', 'confirmed', 'paid', 'shipped')`
       )
@@ -133,9 +151,10 @@ export const orderService = {
       }
 
       const price = ((itemObj.currentPrice as number) || (itemObj.price as number)) as number
-      const sellerId = (itemObj.ownerId as string) || null
+      const sellerId = ownerId
       const itemTitle = itemObj.title as string
       const itemImageUrl = (itemObj.imageUrl as string) || null
+      const finalBuyerName = data.buyerName?.trim() || buyerNameFromDb
 
       const stmt = db.prepare(
         `INSERT INTO orders (
@@ -150,8 +169,8 @@ export const orderService = {
         itemTitle,
         itemImageUrl,
         sellerId,
-        buyerId || null,
-        data.buyerName,
+        buyerId,
+        finalBuyerName,
         data.buyerPhone || null,
         data.buyerAddress || null,
         price,

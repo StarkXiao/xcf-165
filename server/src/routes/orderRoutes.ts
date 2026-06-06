@@ -6,25 +6,26 @@ import { authMiddleware, optionalAuthMiddleware, type AuthenticatedContext } fro
 
 const router = new Router<DefaultState, DefaultContext>({ prefix: '/api/orders' })
 
-router.post('/', optionalAuthMiddleware, async (ctx) => {
-  const body = ctx.request.body as OrderCreate
+router.post('/', authMiddleware, async (ctx) => {
+  const authCtx = ctx as AuthenticatedContext
+  const body = authCtx.request.body as OrderCreate
 
-  if (!body.itemId || !body.buyerName) {
-    ctx.status = 400
-    ctx.body = { code: 400, message: '藏品ID和买家姓名为必填项', data: null }
+  if (!body.itemId) {
+    authCtx.status = 400
+    authCtx.body = { code: 400, message: '藏品ID为必填项', data: null }
     return
   }
 
-  const result = await orderService.create(body, ctx.userId)
+  const result = await orderService.create(body, authCtx.userId)
 
   if ('error' in result) {
-    ctx.status = 400
-    ctx.body = { code: 400, message: result.error, data: null }
+    authCtx.status = 400
+    authCtx.body = { code: 400, message: result.error, data: null }
     return
   }
 
-  ctx.status = 201
-  ctx.body = {
+  authCtx.status = 201
+  authCtx.body = {
     code: 201,
     message: '下单成功',
     data: result
