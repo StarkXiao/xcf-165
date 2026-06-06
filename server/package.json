@@ -1,0 +1,33 @@
+{
+  "name": "breakup-auction-server",
+  "version": "1.0.0",
+  "description": "分手遗物拍卖行后端服务",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "seed": "tsx src/seed.ts"
+  },
+  "dependencies": {
+    "@koa/cors": "^5.0.0",
+    "@koa/router": "^12.0.1",
+    "better-sqlite3": "^11.0.0",
+    "dayjs": "^1.11.11",
+    "koa": "^2.15.3",
+    "koa-body": "^6.0.1",
+    "koa-static": "^5.0.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.10",
+    "@types/koa": "^2.15.0",
+    "@types/koa__cors": "^5.0.0",
+    "@types/koa__router": "^12.0.4",
+    "@types/koa-static": "^4.0.4",
+    "@types/node": "^20.12.12",
+    "@types/uuid": "^9.0.8",
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.5"
+  }
+}
