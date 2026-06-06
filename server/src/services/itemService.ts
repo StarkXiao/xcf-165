@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import dayjs from 'dayjs'
 import { getDatabase, saveDatabase } from '../database'
-import type { Item, ItemCreate, ItemUpdate, QueryParams, PaginatedResponse } from '../types'
+import type { Item, ItemCreate, ItemUpdate, QueryParams, PaginatedResponse, Bid, BidCreate } from '../types'
 import type { Database } from 'sql.js'
 
 async function withDb<T>(fn: (db: Database) => T): Promise<T> {
@@ -26,7 +26,20 @@ function rowToItem(row: unknown[]): Item {
     updatedAt: row[10] as string,
     views: row[11] as number,
     likes: row[12] as number,
-    status: row[13] as Item['status']
+    status: row[13] as Item['status'],
+    currentPrice: (row[14] as number) ?? 0,
+    bidCount: (row[15] as number) ?? 0,
+    soldPrice: row[16] as number | null
+  }
+}
+
+function rowToBid(row: unknown[]): Bid {
+  return {
+    id: row[0] as string,
+    itemId: row[1] as string,
+    bidder: row[2] as string,
+    amount: row[3] as number,
+    createdAt: row[4] as string
   }
 }
 
@@ -39,8 +52,9 @@ export const itemService = {
       const stmt = db.prepare(
         `INSERT INTO items (
           id, title, description, story, price, imageUrl,
-          emotionTags, category, condition, createdAt, updatedAt, views, likes, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'active')`
+          emotionTags, category, condition, createdAt, updatedAt, views, likes, status,
+          currentPrice, bidCount, soldPrice
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'active', ?, 0, NULL)`
       )
       stmt.run([
         id,
@@ -53,7 +67,8 @@ export const itemService = {
         data.category,
         data.condition,
         now,
-        now
+        now,
+        data.price
       ])
       stmt.free()
 
@@ -226,6 +241,9 @@ export const itemService = {
     sold: number
     totalViews: number
     totalLikes: number
+    totalSoldAmount: number
+    totalBidCount: number
+    highestPrice: number
   }> {
     return withDb((db) => {
       const result = db.exec(`
@@ -234,7 +252,10 @@ export const itemService = {
           SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
           SUM(CASE WHEN status = 'sold' THEN 1 ELSE 0 END) as sold,
           COALESCE(SUM(views), 0) as totalViews,
-          COALESCE(SUM(likes), 0) as totalLikes
+          COALESCE(SUM(likes), 0) as totalLikes,
+          COALESCE(SUM(CASE WHEN status = 'sold' THEN soldPrice ELSE 0 END), 0) as totalSoldAmount,
+          COALESCE(SUM(bidCount), 0) as totalBidCount,
+          COALESCE(MAX(currentPrice), 0) as highestPrice
         FROM items
       `)
       const row = result[0].values[0]
@@ -243,8 +264,81 @@ export const itemService = {
         active: row[1] as number,
         sold: row[2] as number,
         totalViews: row[3] as number,
-        totalLikes: row[4] as number
+        totalLikes: row[4] as number,
+        totalSoldAmount: row[5] as number,
+        totalBidCount: row[6] as number,
+        highestPrice: row[7] as number
       }
+    })
+  },
+
+  async placeBid(data: BidCreate): Promise<Bid | { error: string }> {
+    const now = dayjs().toISOString()
+    const id = uuidv4()
+
+    return withDb((db) => {
+      const itemResult = db.exec(`SELECT * FROM items WHERE id = '${data.itemId}'`)
+      if (itemResult.length === 0 || itemResult[0].values.length === 0) {
+        return { error: '拍品不存在' }
+      }
+      const item = rowToItem(itemResult[0].values[0])
+
+      if (item.status !== 'active') {
+        return { error: '该拍品已结束竞拍' }
+      }
+
+      const minBid = (item.currentPrice || item.price) + 1
+      if (data.amount < minBid) {
+        return { error: `出价必须大于等于 ¥${minBid}` }
+      }
+
+      const bidStmt = db.prepare(
+        `INSERT INTO bids (id, itemId, bidder, amount, createdAt) VALUES (?, ?, ?, ?, ?)`
+      )
+      bidStmt.run([id, data.itemId, data.bidder, data.amount, now])
+      bidStmt.free()
+
+      const updateStmt = db.prepare(
+        `UPDATE items SET currentPrice = ?, bidCount = bidCount + 1, updatedAt = ? WHERE id = ?`
+      )
+      updateStmt.run([data.amount, now, data.itemId])
+      updateStmt.free()
+
+      const bidResult = db.exec(`SELECT * FROM bids WHERE id = '${id}'`)
+      return rowToBid(bidResult[0].values[0])
+    })
+  },
+
+  async getBidsByItemId(itemId: string): Promise<Bid[]> {
+    return withDb((db) => {
+      const result = db.exec(
+        `SELECT * FROM bids WHERE itemId = '${itemId}' ORDER BY createdAt DESC`
+      )
+      if (result.length === 0 || result[0].values.length === 0) {
+        return []
+      }
+      return result[0].values.map(rowToBid)
+    })
+  },
+
+  async markAsSold(id: string): Promise<Item | undefined> {
+    const now = dayjs().toISOString()
+    return withDb((db) => {
+      const itemResult = db.exec(`SELECT * FROM items WHERE id = '${id}'`)
+      if (itemResult.length === 0 || itemResult[0].values.length === 0) {
+        return undefined
+      }
+      const item = rowToItem(itemResult[0].values[0])
+      const soldPrice = item.currentPrice || item.price
+
+      const stmt = db.prepare(
+        `UPDATE items SET status = 'sold', soldPrice = ?, updatedAt = ? WHERE id = ?`
+      )
+      stmt.run([soldPrice, now, id])
+      stmt.free()
+
+      const result = db.exec(`SELECT * FROM items WHERE id = '${id}'`)
+      return rowToItem(result[0].values[0])
     })
   }
 }

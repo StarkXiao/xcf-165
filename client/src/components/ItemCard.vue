@@ -22,9 +22,13 @@
       <div class="item-footer">
         <div class="item-price">
           <span class="price-symbol">¥</span>
-          <span class="price-value">{{ item.price }}</span>
+          <span class="price-value">{{ displayPrice }}</span>
+          <span class="price-label" v-if="item.status === 'active' && item.bidCount > 0">当前</span>
+          <span class="price-label" v-else-if="item.status === 'sold'">成交</span>
+          <span class="price-label" v-else>起拍</span>
         </div>
         <div class="item-meta">
+          <span class="meta-item">🏷️ {{ item.bidCount || 0 }}</span>
           <span class="meta-item">👁️ {{ item.views }}</span>
         </div>
       </div>
@@ -61,6 +65,13 @@ const statusText = computed(() => {
     archived: '已下架'
   }
   return map[props.item.status] || ''
+})
+
+const displayPrice = computed(() => {
+  if (props.item.status === 'sold' && props.item.soldPrice) {
+    return props.item.soldPrice
+  }
+  return props.item.currentPrice || props.item.price
 })
 
 function handleClick() {
@@ -195,7 +206,7 @@ async function handleLike() {
 .item-price {
   display: flex;
   align-items: baseline;
-  gap: 0.125rem;
+  gap: 0.25rem;
   color: var(--color-accent);
 }
 
@@ -208,6 +219,15 @@ async function handleLike() {
   font-size: 1.25rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.price-label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: var(--color-background);
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
 }
 
 .item-meta {

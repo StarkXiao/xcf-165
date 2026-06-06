@@ -34,6 +34,27 @@
             <span class="stat-label">已成交</span>
           </div>
         </div>
+        <div class="stat-card">
+          <span class="stat-icon">💰</span>
+          <div class="stat-content">
+            <span class="stat-value">¥{{ itemStore.stats.highestPrice.toFixed(0) }}</span>
+            <span class="stat-label">当前最高价</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon">💵</span>
+          <div class="stat-content">
+            <span class="stat-value">¥{{ itemStore.stats.totalSoldAmount.toFixed(0) }}</span>
+            <span class="stat-label">成交流转总额</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon">🏷️</span>
+          <div class="stat-content">
+            <span class="stat-value">{{ itemStore.stats.totalBidCount }}</span>
+            <span class="stat-label">总出价次数</span>
+          </div>
+        </div>
       </div>
 
       <div class="manage-filters">
@@ -100,13 +121,27 @@
             </div>
             <p class="item-desc">{{ item.description }}</p>
             <div class="item-meta">
-              <span class="meta-item">¥{{ item.price }}</span>
+              <span class="meta-item">起拍价 ¥{{ item.price }}</span>
+              <span class="meta-item price-current" v-if="item.currentPrice">
+                当前价 <strong>¥{{ item.currentPrice }}</strong>
+              </span>
+              <span class="meta-item" v-if="item.soldPrice">
+                成交价 <strong class="text-success">¥{{ item.soldPrice }}</strong>
+              </span>
               <span class="meta-item">{{ item.category }}</span>
+              <span class="meta-item">🏷️ {{ item.bidCount || 0 }} 次出价</span>
               <span class="meta-item">👁️ {{ item.views }}</span>
               <span class="meta-item">❤️ {{ item.likes }}</span>
             </div>
           </div>
           <div class="item-actions">
+            <button
+              v-if="item.status === 'active'"
+              class="btn btn-success btn-sm"
+              @click="handleMarkSold(item)"
+            >
+              标记成交
+            </button>
             <button class="btn btn-secondary btn-sm" @click="handleEdit(item)">
               编辑
             </button>
@@ -203,6 +238,18 @@ async function handleDelete(item: Item) {
   }
 }
 
+async function handleMarkSold(item: Item) {
+  const price = item.currentPrice || item.price
+  if (!confirm(`确定将「${item.title}」标记为已成交？\n成交价：¥${price}`)) return
+  try {
+    await itemStore.markItemAsSold(item.id)
+    await itemStore.fetchStats()
+  } catch (e) {
+    console.error('标记成交失败', e)
+    alert('标记成交失败，请重试')
+  }
+}
+
 function closeModal() {
   showCreateModal.value = false
   showEditModal.value = false
@@ -249,6 +296,25 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
   grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
   margin-bottom: 2rem;
+}
+
+.price-current strong {
+  color: var(--color-accent);
+}
+
+.text-success {
+  color: #22c55e !important;
+}
+
+.btn-success {
+  background: #22c55e;
+  color: white;
+  border: 1px solid #22c55e;
+}
+
+.btn-success:hover {
+  background: #16a34a;
+  border-color: #16a34a;
 }
 
 .stat-card {
@@ -427,6 +493,12 @@ async function handleSubmit(data: ItemCreate | ItemUpdate) {
   display: flex;
   justify-content: center;
   padding: 2rem 0;
+}
+
+@media (max-width: 968px) {
+  .manage-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 768px) {

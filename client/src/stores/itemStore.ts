@@ -1,12 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { itemApi } from '@/api'
-import type { Item, ItemCreate, ItemUpdate, QueryParams, PaginatedResponse, MetaData, Stats } from '@/types'
+import type { Item, ItemCreate, ItemUpdate, QueryParams, PaginatedResponse, MetaData, Stats, Bid, BidCreate } from '@/types'
 
 export const useItemStore = defineStore('item', () => {
   const items = ref<Item[]>([])
   const currentItem = ref<Item | null>(null)
+  const bids = ref<Bid[]>([])
   const loading = ref(false)
+  const bidsLoading = ref(false)
   const pagination = ref({
     page: 1,
     pageSize: 12,
@@ -129,6 +131,46 @@ export const useItemStore = defineStore('item', () => {
     return response.data
   }
 
+  async function fetchBids(itemId: string) {
+    bidsLoading.value = true
+    try {
+      const response = await itemApi.getBids(itemId)
+      bids.value = response.data as Bid[]
+      return bids.value
+    } finally {
+      bidsLoading.value = false
+    }
+  }
+
+  async function placeBid(itemId: string, data: BidCreate) {
+    const response = await itemApi.placeBid(itemId, data)
+    const newBid = response.data as Bid
+    bids.value = [newBid, ...bids.value]
+    if (currentItem.value?.id === itemId) {
+      currentItem.value.currentPrice = newBid.amount
+      currentItem.value.bidCount = (currentItem.value.bidCount || 0) + 1
+    }
+    const item = items.value.find(i => i.id === itemId)
+    if (item) {
+      item.currentPrice = newBid.amount
+      item.bidCount = (item.bidCount || 0) + 1
+    }
+    return newBid
+  }
+
+  async function markItemAsSold(id: string) {
+    const response = await itemApi.markAsSold(id)
+    const updatedItem = response.data as Item
+    const index = items.value.findIndex(item => item.id === id)
+    if (index !== -1) {
+      items.value[index] = updatedItem
+    }
+    if (currentItem.value?.id === id) {
+      currentItem.value = updatedItem
+    }
+    return updatedItem
+  }
+
   function setQueryParams(params: Partial<QueryParams>) {
     queryParams.value = { ...queryParams.value, ...params, page: 1 }
   }
@@ -145,12 +187,15 @@ export const useItemStore = defineStore('item', () => {
 
   function clearCurrentItem() {
     currentItem.value = null
+    bids.value = []
   }
 
   return {
     items,
     currentItem,
+    bids,
     loading,
+    bidsLoading,
     pagination,
     metaData,
     stats,
@@ -166,6 +211,9 @@ export const useItemStore = defineStore('item', () => {
     deleteItem,
     likeItem,
     uploadImage,
+    fetchBids,
+    placeBid,
+    markItemAsSold,
     setQueryParams,
     resetQueryParams,
     clearCurrentItem

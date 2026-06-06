@@ -44,7 +44,33 @@ function initTables(db: Database) {
       updatedAt TEXT NOT NULL,
       views INTEGER NOT NULL DEFAULT 0,
       likes INTEGER NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'active'
+      status TEXT NOT NULL DEFAULT 'active',
+      currentPrice REAL NOT NULL DEFAULT 0,
+      bidCount INTEGER NOT NULL DEFAULT 0,
+      soldPrice REAL
+    )
+  `)
+
+  const cols = db.exec("PRAGMA table_info(items)")
+  const colNames = cols[0]?.values.map((c: unknown[]) => c[1]) || []
+  if (!colNames.includes('currentPrice')) {
+    db.run(`ALTER TABLE items ADD COLUMN currentPrice REAL NOT NULL DEFAULT 0`)
+  }
+  if (!colNames.includes('bidCount')) {
+    db.run(`ALTER TABLE items ADD COLUMN bidCount INTEGER NOT NULL DEFAULT 0`)
+  }
+  if (!colNames.includes('soldPrice')) {
+    db.run(`ALTER TABLE items ADD COLUMN soldPrice REAL`)
+  }
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS bids (
+      id TEXT PRIMARY KEY,
+      itemId TEXT NOT NULL,
+      bidder TEXT NOT NULL,
+      amount REAL NOT NULL,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (itemId) REFERENCES items(id)
     )
   `)
 }

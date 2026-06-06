@@ -1,3 +1,16 @@
+export interface Bid {
+  id: string
+  itemId: string
+  bidder: string
+  amount: number
+  createdAt: string
+}
+
+export interface BidCreate {
+  bidder: string
+  amount: number
+}
+
 export interface Item {
   id: string
   title: string
@@ -13,6 +26,9 @@ export interface Item {
   views: number
   likes: number
   status: 'active' | 'sold' | 'archived'
+  currentPrice: number
+  bidCount: number
+  soldPrice: number | null
 }
 
 export interface ItemCreate {
@@ -69,6 +85,9 @@ export interface Stats {
   sold: number
   totalViews: number
   totalLikes: number
+  totalSoldAmount: number
+  totalBidCount: number
+  highestPrice: number
 }
 
 export type Theme = 'light' | 'dark' | 'warm' | 'cool'

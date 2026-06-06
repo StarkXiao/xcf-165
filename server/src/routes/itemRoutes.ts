@@ -3,7 +3,7 @@ import type { DefaultContext, DefaultState } from 'koa'
 import { itemService } from '../services/itemService'
 import { uploadService } from '../services/uploadService'
 import { EMOTION_TAGS, CATEGORIES, CONDITIONS } from '../types'
-import type { ItemCreate, ItemUpdate, QueryParams } from '../types'
+import type { ItemCreate, ItemUpdate, QueryParams, BidCreate } from '../types'
 
 const router = new Router<DefaultState, DefaultContext>({ prefix: '/api/items' })
 
@@ -165,6 +165,74 @@ router.post('/:id/like', async (ctx) => {
     code: 200,
     message: '点赞成功',
     data: result
+  }
+})
+
+router.get('/:id/bids', async (ctx) => {
+  const { id } = ctx.params
+
+  const existing = await itemService.getById(id)
+  if (!existing) {
+    ctx.status = 404
+    ctx.body = { code: 404, message: '藏品不存在', data: null }
+    return
+  }
+
+  const bids = await itemService.getBidsByItemId(id)
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: bids
+  }
+})
+
+router.post('/:id/bids', async (ctx) => {
+  const { id } = ctx.params
+  const body = ctx.request.body as Omit<BidCreate, 'itemId'>
+
+  if (!body.bidder || !body.amount) {
+    ctx.status = 400
+    ctx.body = { code: 400, message: '出价人昵称和金额为必填项', data: null }
+    return
+  }
+
+  const result = await itemService.placeBid({
+    itemId: id,
+    bidder: body.bidder,
+    amount: Number(body.amount)
+  })
+
+  if ('error' in result) {
+    ctx.status = 400
+    ctx.body = { code: 400, message: result.error, data: null }
+    return
+  }
+
+  ctx.status = 201
+  ctx.body = {
+    code: 201,
+    message: '出价成功',
+    data: result
+  }
+})
+
+router.post('/:id/sold', async (ctx) => {
+  const { id } = ctx.params
+
+  const existing = await itemService.getById(id)
+  if (!existing) {
+    ctx.status = 404
+    ctx.body = { code: 404, message: '藏品不存在', data: null }
+    return
+  }
+
+  const item = await itemService.markAsSold(id)
+
+  ctx.body = {
+    code: 200,
+    message: '标记成交成功',
+    data: item
   }
 })
 

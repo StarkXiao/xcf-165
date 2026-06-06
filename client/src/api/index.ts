@@ -7,7 +7,9 @@ import type {
   PaginatedResponse,
   ApiResponse,
   MetaData,
-  Stats
+  Stats,
+  Bid,
+  BidCreate
 } from '@/types'
 
 const api = axios.create({
@@ -67,6 +69,18 @@ export const itemApi = {
         'Content-Type': 'multipart/form-data'
       }
     })
+  },
+
+  getBids(id: string): Promise<ApiResponse<Bid[]>> {
+    return api.get(`/items/${id}/bids`)
+  },
+
+  placeBid(id: string, data: BidCreate): Promise<ApiResponse<Bid>> {
+    return api.post(`/items/${id}/bids`, data)
+  },
+
+  markAsSold(id: string): Promise<ApiResponse<Item>> {
+    return api.post(`/items/${id}/sold`)
   }
 }
 

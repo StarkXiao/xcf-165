@@ -28,8 +28,24 @@
             <h1 class="detail-title">{{ item.title }}</h1>
             <div class="detail-price">
               <span class="price-symbol">¥</span>
-              <span class="price-value">{{ item.price }}</span>
+              <span class="price-value">{{ displayPrice }}</span>
             </div>
+          </div>
+
+          <div class="price-info" v-if="item.status === 'active'">
+            <span class="price-info-item">起拍价：¥{{ item.price }}</span>
+            <span class="price-info-item highlight">当前最高价：¥{{ item.currentPrice || item.price }}</span>
+            <span class="price-info-item">出价次数：{{ item.bidCount || 0 }}</span>
+          </div>
+          <div class="price-info" v-else-if="item.status === 'sold'">
+            <span class="price-info-item">起拍价：¥{{ item.price }}</span>
+            <span class="price-info-item sold">成交价：¥{{ item.soldPrice || item.currentPrice }}</span>
+            <span class="price-info-item">出价次数：{{ item.bidCount || 0 }}</span>
+          </div>
+          <div class="price-info" v-else>
+            <span class="price-info-item">起拍价：¥{{ item.price }}</span>
+            <span class="price-info-item">最终价：¥{{ item.currentPrice || item.price }}</span>
+            <span class="price-info-item">出价次数：{{ item.bidCount || 0 }}</span>
           </div>
 
           <div class="detail-tags" v-if="emotionTagsList.length > 0">
@@ -65,6 +81,65 @@
             <p class="section-content story-content">{{ item.story }}</p>
           </div>
 
+          <div class="detail-section bid-section" v-if="item.status === 'active'">
+            <h3 class="section-label">我要出价</h3>
+            <div class="bid-form">
+              <div class="form-group">
+                <label class="form-label">您的昵称</label>
+                <input
+                  v-model="bidForm.bidder"
+                  type="text"
+                  class="form-input"
+                  placeholder="请输入您的昵称"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label">出价金额（¥）</label>
+                <input
+                  v-model.number="bidForm.amount"
+                  type="number"
+                  class="form-input"
+                  :min="minBidAmount"
+                  :placeholder="`最低出价 ¥${minBidAmount}`"
+                />
+              </div>
+              <button class="btn btn-primary btn-block" @click="handlePlaceBid" :disabled="bidding">
+                {{ bidding ? '出价中...' : '确认出价' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h3 class="section-label">出价记录（{{ itemStore.bids.length }}）</h3>
+            <div v-if="itemStore.bidsLoading" class="loading-inline">
+              <div class="loading-spinner small"></div>
+              <span>加载中...</span>
+            </div>
+            <div v-else-if="itemStore.bids.length === 0" class="bids-empty">
+              暂无出价记录，快来成为第一个出价的人吧！
+            </div>
+            <div v-else class="bids-list">
+              <div
+                v-for="(bid, index) in itemStore.bids"
+                :key="bid.id"
+                class="bid-item"
+                :class="{ top: index === 0 }"
+              >
+                <div class="bid-rank" v-if="index < 3">
+                  <span v-if="index === 0">🥇</span>
+                  <span v-else-if="index === 1">🥈</span>
+                  <span v-else>🥉</span>
+                </div>
+                <div class="bid-rank num" v-else>{{ index + 1 }}</div>
+                <div class="bid-info">
+                  <span class="bid-bidder">{{ bid.bidder }}</span>
+                  <span class="bid-time">{{ formatDateTime(bid.createdAt) }}</span>
+                </div>
+                <div class="bid-amount">¥{{ bid.amount }}</div>
+              </div>
+            </div>
+          </div>
+
           <div class="detail-actions">
             <button class="btn btn-primary" @click="handleLike" :disabled="isLiked">
               <span>{{ isLiked ? '❤️' : '🤍' }}</span>
@@ -83,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { useItemStore } from '@/stores/itemStore'
@@ -94,7 +169,13 @@ const router = useRouter()
 const itemStore = useItemStore()
 
 const isLiked = ref(false)
+const bidding = ref(false)
 const placeholderImage = 'https://picsum.photos/seed/empty/800/600'
+
+const bidForm = reactive({
+  bidder: '',
+  amount: 0
+})
 
 const item = computed<Item | null>(() => itemStore.currentItem)
 
@@ -111,15 +192,36 @@ const statusText = computed(() => {
   return map[item.value.status] || ''
 })
 
+const displayPrice = computed(() => {
+  if (!item.value) return 0
+  if (item.value.status === 'sold' && item.value.soldPrice) {
+    return item.value.soldPrice
+  }
+  return item.value.currentPrice || item.value.price
+})
+
+const minBidAmount = computed(() => {
+  if (!item.value) return 1
+  return (item.value.currentPrice || item.value.price) + 1
+})
+
 onMounted(async () => {
   const id = route.params.id as string
   if (id) {
     await itemStore.fetchItemById(id)
+    await itemStore.fetchBids(id)
+    if (item.value) {
+      bidForm.amount = minBidAmount.value
+    }
   }
 })
 
 function formatDate(date: string) {
   return dayjs(date).format('YYYY年MM月DD日')
+}
+
+function formatDateTime(date: string) {
+  return dayjs(date).format('MM-DD HH:mm')
 }
 
 function handleBack() {
@@ -133,6 +235,33 @@ async function handleLike() {
     isLiked.value = true
   } catch (e) {
     console.error('点赞失败', e)
+  }
+}
+
+async function handlePlaceBid() {
+  if (!item.value) return
+  if (!bidForm.bidder.trim()) {
+    alert('请输入您的昵称')
+    return
+  }
+  if (!bidForm.amount || bidForm.amount < minBidAmount.value) {
+    alert(`出价必须大于等于 ¥${minBidAmount.value}`)
+    return
+  }
+
+  bidding.value = true
+  try {
+    await itemStore.placeBid(item.value.id, {
+      bidder: bidForm.bidder.trim(),
+      amount: bidForm.amount
+    })
+    bidForm.amount = (item.value?.currentPrice || 0) + 1
+    alert('出价成功！')
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || '出价失败，请重试'
+    alert(msg)
+  } finally {
+    bidding.value = false
   }
 }
 </script>
@@ -287,6 +416,167 @@ async function handleLike() {
 
 .like-count {
   opacity: 0.8;
+}
+
+.price-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  padding: 1rem 1.25rem;
+  background: var(--color-background);
+  border-radius: 12px;
+  font-size: 0.875rem;
+}
+
+.price-info-item {
+  color: var(--color-text-secondary);
+}
+
+.price-info-item.highlight {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.price-info-item.sold {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.bid-section {
+  padding: 1.5rem;
+  background: var(--color-background);
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+}
+
+.bid-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.form-input {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.btn-block {
+  width: 100%;
+  justify-content: center;
+}
+
+.loading-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.loading-spinner.small {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+.bids-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  background: var(--color-background);
+  border-radius: 8px;
+}
+
+.bids-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.bid-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  background: var(--color-background);
+  border-radius: 8px;
+  transition: transform 0.2s;
+}
+
+.bid-item.top {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(245, 158, 11, 0.05));
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.bid-rank {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.bid-rank.num {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  border-radius: 6px;
+}
+
+.bid-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.bid-bidder {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.bid-time {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.bid-amount {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 @media (max-width: 968px) {

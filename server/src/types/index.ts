@@ -1,3 +1,17 @@
+export interface Bid {
+  id: string
+  itemId: string
+  bidder: string
+  amount: number
+  createdAt: string
+}
+
+export interface BidCreate {
+  itemId: string
+  bidder: string
+  amount: number
+}
+
 export interface Item {
   id: string
   title: string
@@ -13,6 +27,9 @@ export interface Item {
   views: number
   likes: number
   status: 'active' | 'sold' | 'archived'
+  currentPrice: number
+  bidCount: number
+  soldPrice: number | null
 }
 
 export interface ItemCreate {
