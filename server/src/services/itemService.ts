@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import dayjs from 'dayjs'
 import { getDatabase, saveDatabase } from '../database'
-import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, Bid, BidCreate } from '../types'
+import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, Bid, BidCreate, Favorite } from '../types'
 import type { Database } from 'sql.js'
 
 async function withDb<T>(fn: (db: Database) => T): Promise<T> {
@@ -14,23 +14,24 @@ async function withDb<T>(fn: (db: Database) => T): Promise<T> {
 function rowToItem(row: unknown[]): Item {
   return {
     id: row[0] as string,
-    title: row[1] as string,
-    description: row[2] as string,
-    story: row[3] as string,
-    price: row[4] as number,
-    imageUrl: row[5] as string,
-    emotionTags: row[6] as string,
-    category: row[7] as string,
-    condition: row[8] as string,
-    createdAt: row[9] as string,
-    updatedAt: row[10] as string,
-    views: row[11] as number,
-    likes: row[12] as number,
-    status: row[13] as Item['status'],
-    currentPrice: (row[14] as number) ?? 0,
-    bidCount: (row[15] as number) ?? 0,
-    soldPrice: row[16] as number | null,
-    scheduledAt: (row[17] as string) || null
+    ownerId: (row[1] as string) || null,
+    title: row[2] as string,
+    description: row[3] as string,
+    story: row[4] as string,
+    price: row[5] as number,
+    imageUrl: row[6] as string,
+    emotionTags: row[7] as string,
+    category: row[8] as string,
+    condition: row[9] as string,
+    createdAt: row[10] as string,
+    updatedAt: row[11] as string,
+    views: row[12] as number,
+    likes: row[13] as number,
+    status: row[14] as Item['status'],
+    currentPrice: (row[15] as number) ?? 0,
+    bidCount: (row[16] as number) ?? 0,
+    soldPrice: row[17] as number | null,
+    scheduledAt: (row[18] as string) || null
   }
 }
 
@@ -39,8 +40,9 @@ function rowToBid(row: unknown[]): Bid {
     id: row[0] as string,
     itemId: row[1] as string,
     bidder: row[2] as string,
-    amount: row[3] as number,
-    createdAt: row[4] as string
+    bidderId: (row[3] as string) || null,
+    amount: row[4] as number,
+    createdAt: row[5] as string
   }
 }
 
@@ -75,13 +77,14 @@ export const itemService = {
     return withDb((db) => {
       const stmt = db.prepare(
         `INSERT INTO items (
-          id, title, description, story, price, imageUrl,
+          id, ownerId, title, description, story, price, imageUrl,
           emotionTags, category, condition, createdAt, updatedAt, views, likes, status,
           currentPrice, bidCount, soldPrice, scheduledAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 0, NULL, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 0, NULL, ?)`
       )
       stmt.run([
         id,
+        data.ownerId || null,
         data.title,
         data.description,
         data.story,
@@ -120,13 +123,14 @@ export const itemService = {
     return withDb((db) => {
       const stmt = db.prepare(
         `INSERT INTO items (
-          id, title, description, story, price, imageUrl,
+          id, ownerId, title, description, story, price, imageUrl,
           emotionTags, category, condition, createdAt, updatedAt, views, likes, status,
           currentPrice, bidCount, soldPrice, scheduledAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 0, 0, NULL, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 0, 0, NULL, ?)`
       )
       stmt.run([
         id,
+        data.ownerId || null,
         data.title || '',
         data.description || '',
         data.story || '',
@@ -144,6 +148,83 @@ export const itemService = {
 
       const result = db.exec(`SELECT * FROM items WHERE id = '${id}'`)
       return rowToItem(result[0].values[0])
+    })
+  },
+
+  async listByOwner(ownerId: string, params: QueryParams): Promise<PaginatedResponse<Item>> {
+    return this.list({ ...params, status: undefined }).then(result => ({
+      ...result,
+      data: result.data.filter(item => item.ownerId === ownerId)
+    }))
+  },
+
+  async getFavoritesByUserId(userId: string, params: QueryParams): Promise<PaginatedResponse<Item>> {
+    const { page = 1, pageSize = 12 } = params
+    return withDb((db) => {
+      const countResult = db.exec(
+        `SELECT COUNT(*) FROM favorites WHERE userId = '${userId}'`
+      )
+      const total = (countResult[0]?.values[0]?.[0] as number) || 0
+
+      const offset = (page - 1) * pageSize
+      const result = db.exec(
+        `SELECT items.* FROM items
+         INNER JOIN favorites ON items.id = favorites.itemId
+         WHERE favorites.userId = '${userId}'
+         ORDER BY favorites.createdAt DESC
+         LIMIT ${pageSize} OFFSET ${offset}`
+      )
+
+      const data = result.length > 0 ? result[0].values.map(rowToItem) : []
+      return {
+        data,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize)
+      }
+    })
+  },
+
+  async isFavorite(userId: string, itemId: string): Promise<boolean> {
+    return withDb((db) => {
+      const result = db.exec(
+        `SELECT COUNT(*) FROM favorites WHERE userId = '${userId}' AND itemId = '${itemId}'`
+      )
+      return ((result[0]?.values[0]?.[0] as number) || 0) > 0
+    })
+  },
+
+  async addFavorite(userId: string, itemId: string): Promise<Favorite | { error: string }> {
+    const now = dayjs().toISOString()
+    const id = uuidv4()
+    return withDb((db) => {
+      try {
+        const stmt = db.prepare(
+          `INSERT INTO favorites (id, userId, itemId, createdAt) VALUES (?, ?, ?, ?)`
+        )
+        stmt.run([id, userId, itemId, now])
+        stmt.free()
+        const result = db.exec(`SELECT * FROM favorites WHERE id = '${id}'`)
+        return {
+          id: result[0].values[0][0] as string,
+          userId: result[0].values[0][1] as string,
+          itemId: result[0].values[0][2] as string,
+          createdAt: result[0].values[0][3] as string
+        }
+      } catch (e) {
+        return { error: '已收藏该藏品' }
+      }
+    })
+  },
+
+  async removeFavorite(userId: string, itemId: string): Promise<boolean> {
+    return withDb((db) => {
+      db.run(
+        `DELETE FROM favorites WHERE userId = '${userId}' AND itemId = '${itemId}'`
+      )
+      const result = db.exec(`SELECT changes() as cnt`)
+      return ((result[0]?.values[0]?.[0] as number) || 0) > 0
     })
   },
 
@@ -389,9 +470,9 @@ export const itemService = {
       }
 
       const bidStmt = db.prepare(
-        `INSERT INTO bids (id, itemId, bidder, amount, createdAt) VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO bids (id, itemId, bidder, bidderId, amount, createdAt) VALUES (?, ?, ?, ?, ?, ?)`
       )
-      bidStmt.run([id, data.itemId, data.bidder, data.amount, now])
+      bidStmt.run([id, data.itemId, data.bidder, data.bidderId || null, data.amount, now])
       bidStmt.free()
 
       const updateStmt = db.prepare(

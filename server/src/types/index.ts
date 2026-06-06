@@ -2,6 +2,7 @@ export interface Bid {
   id: string
   itemId: string
   bidder: string
+  bidderId: string | null
   amount: number
   createdAt: string
 }
@@ -9,11 +10,13 @@ export interface Bid {
 export interface BidCreate {
   itemId: string
   bidder: string
+  bidderId?: string
   amount: number
 }
 
 export interface Item {
   id: string
+  ownerId: string | null
   title: string
   description: string
   story: string
@@ -34,6 +37,7 @@ export interface Item {
 }
 
 export interface ItemCreate {
+  ownerId?: string
   title: string
   description: string
   story: string
@@ -46,6 +50,7 @@ export interface ItemCreate {
 }
 
 export interface ItemDraftCreate {
+  ownerId?: string
   title?: string
   description?: string
   story?: string
@@ -102,3 +107,54 @@ export const CATEGORIES = [
 export const CONDITIONS = [
   '全新', '几乎全新', '轻微使用', '明显使用', '有瑕疵'
 ] as const
+
+export interface User {
+  id: string
+  username: string
+  password: string
+  nickname: string | null
+  avatar: string | null
+  bio: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UserPublic {
+  id: string
+  username: string
+  nickname: string | null
+  avatar: string | null
+  bio: string | null
+  createdAt: string
+}
+
+export interface UserRegister {
+  username: string
+  password: string
+  nickname?: string
+}
+
+export interface UserLogin {
+  username: string
+  password: string
+}
+
+export interface UserUpdate {
+  nickname?: string
+  avatar?: string
+  bio?: string
+  password?: string
+}
+
+export interface Favorite {
+  id: string
+  userId: string
+  itemId: string
+  createdAt: string
+}
+
+export interface AuthPayload {
+  userId: string
+  token: string
+  user: UserPublic
+}

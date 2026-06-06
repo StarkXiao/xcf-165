@@ -166,6 +166,15 @@
               {{ isLiked ? '已点赞' : '点赞' }}
               <span class="like-count">({{ item.likes }})</span>
             </button>
+            <button
+              v-if="userStore.isLoggedIn"
+              class="btn"
+              :class="isFavorited ? 'btn-favorited' : 'btn-secondary'"
+              @click="handleToggleFavorite"
+            >
+              <span>{{ isFavorited ? '💖' : '🤍' }}</span>
+              {{ isFavorited ? '已收藏' : '收藏' }}
+            </button>
             <router-link to="/manage" class="btn btn-secondary">
               <span>📦</span>
               我也要上架
@@ -182,13 +191,16 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { useItemStore } from '@/stores/itemStore'
+import { useUserStore } from '@/stores/userStore'
 import type { Item } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
 const itemStore = useItemStore()
+const userStore = useUserStore()
 
 const isLiked = ref(false)
+const isFavorited = ref(false)
 const bidding = ref(false)
 const placeholderImage = 'https://picsum.photos/seed/empty/800/600'
 
@@ -234,6 +246,12 @@ onMounted(async () => {
     await itemStore.fetchBids(id)
     if (item.value) {
       bidForm.amount = minBidAmount.value
+      if (userStore.currentUser?.nickname || userStore.currentUser?.username) {
+        bidForm.bidder = userStore.currentUser.nickname || userStore.currentUser.username
+      }
+    }
+    if (userStore.isLoggedIn) {
+      isFavorited.value = await userStore.checkFavorite(id)
     }
   }
 })
@@ -260,6 +278,11 @@ async function handleLike() {
   }
 }
 
+async function handleToggleFavorite() {
+  if (!item.value || !userStore.isLoggedIn) return
+  isFavorited.value = await userStore.toggleFavorite(item.value.id)
+}
+
 async function handlePlaceBid() {
   if (!item.value) return
   if (!bidForm.bidder.trim()) {
@@ -275,6 +298,7 @@ async function handlePlaceBid() {
   try {
     await itemStore.placeBid(item.value.id, {
       bidder: bidForm.bidder.trim(),
+      bidderId: userStore.currentUser?.id,
       amount: bidForm.amount
     })
     bidForm.amount = (item.value?.currentPrice || 0) + 1
@@ -474,6 +498,68 @@ async function handlePlaceBid() {
 
 .like-count {
   opacity: 0.8;
+}
+
+.btn-favorited {
+  background: rgba(244, 63, 94, 0.1);
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: 10px;
+  padding: 0.65rem 1.25rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-favorited:hover {
+  background: rgba(244, 63, 94, 0.15);
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.65rem 1.25rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+}
+
+.btn-secondary:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 0.65rem 1.25rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .price-info {

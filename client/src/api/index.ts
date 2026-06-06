@@ -10,8 +10,40 @@ import type {
   MetaData,
   Stats,
   Bid,
-  BidCreate
+  BidCreate,
+  UserPublic,
+  UserRegister,
+  UserLogin,
+  UserUpdate,
+  AuthPayload,
+  Favorite
 } from '@/types'
+
+const TOKEN_KEY = 'solo_auth_token'
+
+export function getToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_KEY, token)
+  } catch {
+    // ignore
+  }
+}
+
+export function removeToken(): void {
+  try {
+    localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // ignore
+  }
+}
 
 const api = axios.create({
   baseURL: '/api',
@@ -21,10 +53,24 @@ const api = axios.create({
   }
 })
 
+api.interceptors.request.use(
+  (config) => {
+    const token = getToken()
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  },
+  (error) => Promise.reject(error)
+)
+
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
     console.error('API Error:', error)
+    if (error.response?.status === 401) {
+      removeToken()
+    }
     return Promise.reject(error)
   }
 )
@@ -86,6 +132,56 @@ export const itemApi = {
 
   markAsSold(id: string): Promise<ApiResponse<Item>> {
     return api.post(`/items/${id}/sold`)
+  },
+
+  checkFavorite(id: string): Promise<ApiResponse<{ favorited: boolean }>> {
+    return api.get(`/items/${id}/favorite`)
+  },
+
+  addFavorite(id: string): Promise<ApiResponse<Favorite>> {
+    return api.post(`/items/${id}/favorite`)
+  },
+
+  removeFavorite(id: string): Promise<ApiResponse<null>> {
+    return api.delete(`/items/${id}/favorite`)
+  }
+}
+
+export const userApi = {
+  register(data: UserRegister): Promise<ApiResponse<UserPublic>> {
+    return api.post('/users/register', data)
+  },
+
+  login(data: UserLogin): Promise<ApiResponse<AuthPayload>> {
+    return api.post('/users/login', data)
+  },
+
+  logout(): Promise<ApiResponse<null>> {
+    return api.post('/users/logout')
+  },
+
+  getMe(): Promise<ApiResponse<UserPublic>> {
+    return api.get('/users/me')
+  },
+
+  updateMe(data: UserUpdate): Promise<ApiResponse<UserPublic>> {
+    return api.put('/users/me', data)
+  },
+
+  getById(id: string): Promise<ApiResponse<UserPublic>> {
+    return api.get(`/users/${id}`)
+  },
+
+  getUserItems(id: string, params?: QueryParams): Promise<ApiResponse<PaginatedResponse<Item>>> {
+    return api.get(`/users/${id}/items`, { params })
+  },
+
+  getMyItems(params?: QueryParams): Promise<ApiResponse<PaginatedResponse<Item>>> {
+    return api.get('/users/me/items', { params })
+  },
+
+  getMyFavorites(params?: QueryParams): Promise<ApiResponse<PaginatedResponse<Item>>> {
+    return api.get('/users/me/favorites', { params })
   }
 }
 

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
+import { getToken } from '@/api'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -16,6 +17,18 @@ const routes: RouteRecordRaw[] = [
     path: '/manage',
     name: 'Manage',
     component: () => import('@/views/ManageView.vue')
+  },
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/LoginView.vue'),
+    meta: { guestOnly: true }
+  },
+  {
+    path: '/profile',
+    name: 'Profile',
+    component: () => import('@/views/ProfileView.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 
@@ -28,6 +41,16 @@ const router = createRouter({
     } else {
       return { top: 0 }
     }
+  }
+})
+
+router.beforeEach((to) => {
+  const hasToken = !!getToken()
+  if (to.meta.requiresAuth && !hasToken) {
+    return { name: 'Login', query: { redirect: to.fullPath } }
+  }
+  if (to.meta.guestOnly && hasToken) {
+    return { name: 'Home' }
   }
 })
 

@@ -4,6 +4,7 @@ import { itemService } from '../services/itemService'
 import { uploadService } from '../services/uploadService'
 import { EMOTION_TAGS, CATEGORIES, CONDITIONS } from '../types'
 import type { ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, BidCreate } from '../types'
+import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth'
 
 const router = new Router<DefaultState, DefaultContext>({ prefix: '/api/items' })
 
@@ -81,7 +82,7 @@ router.get('/:id', async (ctx) => {
   }
 })
 
-router.post('/', async (ctx) => {
+router.post('/', optionalAuthMiddleware, async (ctx) => {
   const body = ctx.request.body as ItemCreate
 
   if (!body.title || !body.description || !body.story) {
@@ -90,7 +91,10 @@ router.post('/', async (ctx) => {
     return
   }
 
-  const item = await itemService.create(body)
+  const item = await itemService.create({
+    ...body,
+    ownerId: ctx.userId
+  })
 
   ctx.status = 201
   ctx.body = {
@@ -100,9 +104,12 @@ router.post('/', async (ctx) => {
   }
 })
 
-router.post('/drafts', async (ctx) => {
+router.post('/drafts', optionalAuthMiddleware, async (ctx) => {
   const body = ctx.request.body as ItemDraftCreate
-  const item = await itemService.createDraft(body)
+  const item = await itemService.createDraft({
+    ...body,
+    ownerId: ctx.userId
+  })
 
   ctx.status = 201
   ctx.body = {
@@ -216,7 +223,7 @@ router.get('/:id/bids', async (ctx) => {
   }
 })
 
-router.post('/:id/bids', async (ctx) => {
+router.post('/:id/bids', optionalAuthMiddleware, async (ctx) => {
   const { id } = ctx.params
   const body = ctx.request.body as Omit<BidCreate, 'itemId'>
 
@@ -229,6 +236,7 @@ router.post('/:id/bids', async (ctx) => {
   const result = await itemService.placeBid({
     itemId: id,
     bidder: body.bidder,
+    bidderId: ctx.userId,
     amount: Number(body.amount)
   })
 
@@ -262,6 +270,61 @@ router.post('/:id/sold', async (ctx) => {
     code: 200,
     message: '标记成交成功',
     data: item
+  }
+})
+
+router.get('/:id/favorite', authMiddleware, async (ctx) => {
+  const { id } = ctx.params
+  const userId = ctx.userId!
+  const favorited = await itemService.isFavorite(userId, id)
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: { favorited }
+  }
+})
+
+router.post('/:id/favorite', authMiddleware, async (ctx) => {
+  const { id } = ctx.params
+  const userId = ctx.userId!
+
+  const existing = await itemService.getById(id)
+  if (!existing) {
+    ctx.status = 404
+    ctx.body = { code: 404, message: '藏品不存在', data: null }
+    return
+  }
+
+  const result = await itemService.addFavorite(userId, id)
+  if ('error' in result) {
+    ctx.status = 400
+    ctx.body = { code: 400, message: result.error, data: null }
+    return
+  }
+
+  ctx.status = 201
+  ctx.body = {
+    code: 201,
+    message: '收藏成功',
+    data: result
+  }
+})
+
+router.delete('/:id/favorite', authMiddleware, async (ctx) => {
+  const { id } = ctx.params
+  const userId = ctx.userId!
+
+  const removed = await itemService.removeFavorite(userId, id)
+  if (!removed) {
+    ctx.status = 404
+    ctx.body = { code: 404, message: '收藏记录不存在', data: null }
+    return
+  }
+
+  ctx.body = {
+    code: 200,
+    message: '取消收藏成功',
+    data: null
   }
 })
 

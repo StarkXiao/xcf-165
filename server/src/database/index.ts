@@ -30,8 +30,22 @@ export async function getDatabase(): Promise<Database> {
 
 function initTables(db: Database) {
   db.run(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL,
+      nickname TEXT,
+      avatar TEXT,
+      bio TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    )
+  `)
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS items (
       id TEXT PRIMARY KEY,
+      ownerId TEXT,
       title TEXT NOT NULL,
       description TEXT NOT NULL,
       story TEXT NOT NULL,
@@ -47,12 +61,17 @@ function initTables(db: Database) {
       status TEXT NOT NULL DEFAULT 'active',
       currentPrice REAL NOT NULL DEFAULT 0,
       bidCount INTEGER NOT NULL DEFAULT 0,
-      soldPrice REAL
+      soldPrice REAL,
+      scheduledAt TEXT,
+      FOREIGN KEY (ownerId) REFERENCES users(id)
     )
   `)
 
   const cols = db.exec("PRAGMA table_info(items)")
   const colNames = cols[0]?.values.map((c: unknown[]) => c[1]) || []
+  if (!colNames.includes('ownerId')) {
+    db.run(`ALTER TABLE items ADD COLUMN ownerId TEXT`)
+  }
   if (!colNames.includes('currentPrice')) {
     db.run(`ALTER TABLE items ADD COLUMN currentPrice REAL NOT NULL DEFAULT 0`)
   }
@@ -71,9 +90,29 @@ function initTables(db: Database) {
       id TEXT PRIMARY KEY,
       itemId TEXT NOT NULL,
       bidder TEXT NOT NULL,
+      bidderId TEXT,
       amount REAL NOT NULL,
       createdAt TEXT NOT NULL,
-      FOREIGN KEY (itemId) REFERENCES items(id)
+      FOREIGN KEY (itemId) REFERENCES items(id),
+      FOREIGN KEY (bidderId) REFERENCES users(id)
+    )
+  `)
+
+  const bidCols = db.exec("PRAGMA table_info(bids)")
+  const bidColNames = bidCols[0]?.values.map((c: unknown[]) => c[1]) || []
+  if (!bidColNames.includes('bidderId')) {
+    db.run(`ALTER TABLE bids ADD COLUMN bidderId TEXT`)
+  }
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS favorites (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      itemId TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id),
+      FOREIGN KEY (itemId) REFERENCES items(id),
+      UNIQUE(userId, itemId)
     )
   `)
 }
