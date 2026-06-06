@@ -1,9 +1,11 @@
 import { v4 as uuidv4 } from 'uuid'
 import dayjs from 'dayjs'
 import { getDatabase, saveDatabase } from '../database'
-import type { Comment, CommentCreate, CommentQueryParams, PaginatedResponse, CommentStatus } from '../types'
+import type { Comment, CommentCreate, CommentQueryParams, PaginatedResponse, CommentStatus, CommentReject, ContentCheckResult } from '../types'
 import type { Database } from 'sql.js'
 import { messageService } from './messageService'
+import { moderationService } from './moderationService'
+import { userService } from './userService'
 
 async function withDb<T>(fn: (db: Database) => T | Promise<T>): Promise<T> {
   const db = await getDatabase()
@@ -14,7 +16,8 @@ async function withDb<T>(fn: (db: Database) => T | Promise<T>): Promise<T> {
 
 const COMMENT_COLUMNS = [
   'id', 'itemId', 'userId', 'username', 'parentId',
-  'content', 'status', 'createdAt', 'updatedAt'
+  'content', 'status', 'rejectReason', 'rejectReasonId',
+  'reviewerId', 'reviewedAt', 'createdAt', 'updatedAt'
 ] as const
 
 const COMMENT_SELECT = COMMENT_COLUMNS.join(', ')
@@ -28,6 +31,10 @@ function objToComment(obj: Record<string, unknown>): Comment {
     parentId: (obj.parentId as string) || null,
     content: obj.content as string,
     status: obj.status as CommentStatus,
+    rejectReason: (obj.rejectReason as string) || null,
+    rejectReasonId: (obj.rejectReasonId as string) || null,
+    reviewerId: (obj.reviewerId as string) || null,
+    reviewedAt: (obj.reviewedAt as string) || null,
     createdAt: obj.createdAt as string,
     updatedAt: obj.updatedAt as string
   }
@@ -127,7 +134,7 @@ export const commentService = {
     })
   },
 
-  async create(data: CommentCreate, userId?: string): Promise<Comment | { error: string }> {
+  async create(data: CommentCreate, userId?: string): Promise<Comment | { error: string; checkResult?: ContentCheckResult }> {
     const now = dayjs().toISOString()
     const id = uuidv4()
 
@@ -137,6 +144,14 @@ export const commentService = {
 
     if (data.content.length > 500) {
       return { error: '留言内容不能超过500字' }
+    }
+
+    const checkResult = await moderationService.checkContent(data.content)
+    if (checkResult.suggestedAction === 'block') {
+      return {
+        error: '留言内容包含违规信息，无法提交',
+        checkResult
+      }
     }
 
     return withDb((db) => {
@@ -158,12 +173,21 @@ export const commentService = {
       }
 
       const username = data.username?.trim() || '匿名用户'
-      const status = data.parentId ? 'approved' : 'pending'
+      let status: CommentStatus
+      if (data.parentId) {
+        status = 'approved'
+      } else if (checkResult.passed) {
+        status = 'pending'
+      } else {
+        status = 'pending'
+      }
 
       const stmt = db.prepare(
         `INSERT INTO comments (
-          id, itemId, userId, username, parentId, content, status, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          id, itemId, userId, username, parentId, content, status,
+          rejectReason, rejectReasonId, reviewerId, reviewedAt,
+          createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       stmt.run([
         id,
@@ -173,12 +197,17 @@ export const commentService = {
         data.parentId || null,
         data.content.trim(),
         status,
+        null,
+        null,
+        null,
+        null,
         now,
         now
       ])
       stmt.free()
 
-      return readOneComment(db, id) as Comment
+      const comment = readOneComment(db, id) as Comment
+      return { ...comment }
     })
   },
 
@@ -274,7 +303,7 @@ export const commentService = {
     })
   },
 
-  async approve(id: string, userId: string): Promise<Comment | undefined | { error: string; unauthorized?: boolean }> {
+  async approve(id: string, userId: string, remark?: string): Promise<Comment | undefined | { error: string; unauthorized?: boolean }> {
     const now = dayjs().toISOString()
     const result = await withDb(async (db) => {
       const comment = readOneComment(db, id)
@@ -285,12 +314,34 @@ export const commentService = {
       if (ownerId !== userId) {
         return { error: '只有藏品卖家才能审核留言', unauthorized: true }
       }
+      const beforeStatus = comment.status
 
-      const stmt = db.prepare(`UPDATE comments SET status = 'approved', updatedAt = ? WHERE id = ?`)
-      stmt.run([now, id])
+      const stmt = db.prepare(`
+        UPDATE comments SET 
+          status = 'approved', 
+          rejectReason = NULL,
+          rejectReasonId = NULL,
+          reviewerId = ?,
+          reviewedAt = ?,
+          updatedAt = ? 
+        WHERE id = ?
+      `)
+      stmt.run([userId, now, now, id])
       stmt.free()
 
       const updatedComment = readOneComment(db, id)
+
+      const reviewer = await userService.getById(userId)
+      await moderationService.createReviewRecord({
+        targetId: id,
+        targetType: 'comment',
+        reviewerId: userId,
+        reviewerName: reviewer?.nickname || reviewer?.username || '未知用户',
+        action: 'approve',
+        beforeStatus,
+        afterStatus: 'approved',
+        remark
+      })
 
       if (updatedComment && comment.userId) {
         try {
@@ -315,7 +366,7 @@ export const commentService = {
     return result
   },
 
-  async reject(id: string, userId: string): Promise<Comment | undefined | { error: string; unauthorized?: boolean }> {
+  async reject(id: string, userId: string, rejectData?: CommentReject): Promise<Comment | undefined | { error: string; unauthorized?: boolean }> {
     const now = dayjs().toISOString()
     const result = await withDb(async (db) => {
       const comment = readOneComment(db, id)
@@ -326,12 +377,53 @@ export const commentService = {
       if (ownerId !== userId) {
         return { error: '只有藏品卖家才能拒绝留言', unauthorized: true }
       }
+      const beforeStatus = comment.status
 
-      const stmt = db.prepare(`UPDATE comments SET status = 'rejected', updatedAt = ? WHERE id = ?`)
-      stmt.run([now, id])
+      let rejectReasonText = rejectData?.rejectReason
+      let rejectReasonId = rejectData?.rejectReasonId || null
+
+      if (rejectReasonId && !rejectReasonText) {
+        const template = await moderationService.getRejectReasonTemplateById(rejectReasonId)
+        if (template) {
+          rejectReasonText = template.description
+        }
+      }
+
+      const stmt = db.prepare(`
+        UPDATE comments SET 
+          status = 'rejected', 
+          rejectReason = ?,
+          rejectReasonId = ?,
+          reviewerId = ?,
+          reviewedAt = ?,
+          updatedAt = ? 
+        WHERE id = ?
+      `)
+      stmt.run([
+        rejectReasonText || null,
+        rejectReasonId,
+        userId,
+        now,
+        now,
+        id
+      ])
       stmt.free()
 
       const updatedComment = readOneComment(db, id)
+
+      const reviewer = await userService.getById(userId)
+      await moderationService.createReviewRecord({
+        targetId: id,
+        targetType: 'comment',
+        reviewerId: userId,
+        reviewerName: reviewer?.nickname || reviewer?.username || '未知用户',
+        action: 'reject',
+        rejectReason: rejectReasonText,
+        rejectReasonId: rejectReasonId || undefined,
+        beforeStatus,
+        afterStatus: 'rejected',
+        remark: rejectData?.remark
+      })
 
       if (updatedComment && comment.userId) {
         try {
@@ -342,7 +434,8 @@ export const commentService = {
               id,
               info.itemId,
               info.itemTitle,
-              false
+              false,
+              rejectReasonText
             )
           }
         } catch (e) {

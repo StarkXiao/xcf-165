@@ -231,6 +231,10 @@ export interface Comment {
   parentId: string | null
   content: string
   status: CommentStatus
+  rejectReason: string | null
+  rejectReasonId: string | null
+  reviewerId: string | null
+  reviewedAt: string | null
   createdAt: string
   updatedAt: string
   replies?: Comment[]
@@ -336,4 +340,136 @@ export interface DashboardData {
   totalLikes: number
   totalBidCount: number
   userCount: number
+}
+
+export type SensitiveWordCategory = 'politics' | 'violence' | 'pornography' | 'ad' | 'insult' | 'other'
+
+export interface SensitiveWord {
+  id: string
+  word: string
+  category: SensitiveWordCategory
+  level: 'low' | 'medium' | 'high'
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SensitiveWordCreate {
+  word: string
+  category: SensitiveWordCategory
+  level?: 'low' | 'medium' | 'high'
+}
+
+export interface SensitiveWordUpdate {
+  word?: string
+  category?: SensitiveWordCategory
+  level?: 'low' | 'medium' | 'high'
+}
+
+export interface SensitiveWordQueryParams {
+  page?: number
+  pageSize?: number
+  category?: SensitiveWordCategory | 'all'
+  level?: ('low' | 'medium' | 'high') | 'all'
+  keyword?: string
+}
+
+export interface SensitiveWordMatch {
+  word: string
+  category: SensitiveWordCategory
+  level: 'low' | 'medium' | 'high'
+  start: number
+  end: number
+}
+
+export interface ContentCheckResult {
+  passed: boolean
+  matches: SensitiveWordMatch[]
+  highestLevel: 'none' | 'low' | 'medium' | 'high'
+  suggestedAction: 'pass' | 'review' | 'block'
+}
+
+export type ReviewableType = 'comment' | 'item' | 'message'
+
+export type ReviewAction = 'approve' | 'reject'
+
+export interface ReviewRecord {
+  id: string
+  targetId: string
+  targetType: ReviewableType
+  reviewerId: string
+  reviewerName: string
+  action: ReviewAction
+  rejectReason: string | null
+  rejectReasonId: string | null
+  beforeStatus: string
+  afterStatus: string
+  remark: string | null
+  createdAt: string
+}
+
+export interface ReviewRecordCreate {
+  targetId: string
+  targetType: ReviewableType
+  reviewerId: string
+  reviewerName: string
+  action: ReviewAction
+  rejectReason?: string
+  rejectReasonId?: string
+  beforeStatus: string
+  afterStatus: string
+  remark?: string
+}
+
+export interface ReviewRecordQueryParams {
+  page?: number
+  pageSize?: number
+  targetType?: ReviewableType | 'all'
+  action?: ReviewAction | 'all'
+  targetId?: string
+  reviewerId?: string
+  startDate?: string
+  endDate?: string
+}
+
+export interface RejectReasonTemplate {
+  id: string
+  title: string
+  description: string
+  category: string
+  isDefault: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RejectReasonTemplateCreate {
+  title: string
+  description: string
+  category?: string
+  isDefault?: boolean
+  sortOrder?: number
+}
+
+export interface RejectReasonTemplateUpdate {
+  title?: string
+  description?: string
+  category?: string
+  isDefault?: boolean
+  sortOrder?: number
+}
+
+export interface CommentReject {
+  rejectReason?: string
+  rejectReasonId?: string
+  remark?: string
+}
+
+export interface ModerationStats {
+  totalReviewed: number
+  approved: number
+  rejected: number
+  pending: number
+  sensitiveWordCount: number
+  autoBlocked: number
+  autoFlagged: number
 }

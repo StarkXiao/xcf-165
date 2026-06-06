@@ -182,6 +182,63 @@ function initTables(db: Database) {
       FOREIGN KEY (userId) REFERENCES users(id)
     )
   `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sensitive_words (
+      id TEXT PRIMARY KEY,
+      word TEXT NOT NULL UNIQUE,
+      category TEXT NOT NULL DEFAULT 'other',
+      level TEXT NOT NULL DEFAULT 'medium',
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    )
+  `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS review_records (
+      id TEXT PRIMARY KEY,
+      targetId TEXT NOT NULL,
+      targetType TEXT NOT NULL,
+      reviewerId TEXT NOT NULL,
+      reviewerName TEXT NOT NULL,
+      action TEXT NOT NULL,
+      rejectReason TEXT,
+      rejectReasonId TEXT,
+      beforeStatus TEXT NOT NULL,
+      afterStatus TEXT NOT NULL,
+      remark TEXT,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (reviewerId) REFERENCES users(id)
+    )
+  `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS reject_reason_templates (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'general',
+      isDefault INTEGER NOT NULL DEFAULT 0,
+      sortOrder INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    )
+  `)
+
+  const commentCols = db.exec("PRAGMA table_info(comments)")
+  const commentColNames = commentCols[0]?.values.map((c: unknown[]) => c[1]) || []
+  if (!commentColNames.includes('rejectReason')) {
+    db.run(`ALTER TABLE comments ADD COLUMN rejectReason TEXT`)
+  }
+  if (!commentColNames.includes('rejectReasonId')) {
+    db.run(`ALTER TABLE comments ADD COLUMN rejectReasonId TEXT`)
+  }
+  if (!commentColNames.includes('reviewerId')) {
+    db.run(`ALTER TABLE comments ADD COLUMN reviewerId TEXT`)
+  }
+  if (!commentColNames.includes('reviewedAt')) {
+    db.run(`ALTER TABLE comments ADD COLUMN reviewedAt TEXT`)
+  }
 }
 
 export function saveDatabase(db: Database): void {

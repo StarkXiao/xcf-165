@@ -3,7 +3,7 @@ import type { DefaultContext, DefaultState } from 'koa'
 import { commentService } from '../services/commentService'
 import { itemService } from '../services/itemService'
 import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth'
-import type { CommentCreate, CommentQueryParams } from '../types'
+import type { CommentCreate, CommentQueryParams, CommentReject } from '../types'
 
 const router = new Router<DefaultState, DefaultContext>({ prefix: '/api/comments' })
 
@@ -85,7 +85,8 @@ router.post('/', optionalAuthMiddleware, async (ctx) => {
 router.post('/:id/approve', authMiddleware, async (ctx) => {
   const { id } = ctx.params
   const userId = ctx.userId!
-  const result = await commentService.approve(id, userId)
+  const { remark } = ctx.request.body as { remark?: string } || {}
+  const result = await commentService.approve(id, userId, remark)
 
   if (!result) {
     ctx.status = 404
@@ -110,7 +111,8 @@ router.post('/:id/approve', authMiddleware, async (ctx) => {
 router.post('/:id/reject', authMiddleware, async (ctx) => {
   const { id } = ctx.params
   const userId = ctx.userId!
-  const result = await commentService.reject(id, userId)
+  const rejectData = ctx.request.body as CommentReject || {}
+  const result = await commentService.reject(id, userId, rejectData)
 
   if (!result) {
     ctx.status = 404

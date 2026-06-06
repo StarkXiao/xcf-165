@@ -350,15 +350,15 @@ export const messageService = {
     })
   },
 
-  async sendCommentReviewResult(userId: string, commentId: string, itemId: string, itemTitle: string, approved: boolean): Promise<Message> {
+  async sendCommentReviewResult(userId: string, commentId: string, itemId: string, itemTitle: string, approved: boolean, rejectReason?: string): Promise<Message> {
     return this.create({
       userId,
       type: 'review_result',
       title: approved ? '留言审核通过' : '留言未通过审核',
       content: approved
         ? `您在藏品「${itemTitle}」的留言已通过审核`
-        : `您在藏品「${itemTitle}」的留言未通过审核`,
-      data: { commentId, itemId, itemTitle, approved },
+        : `您在藏品「${itemTitle}」的留言未通过审核${rejectReason ? `，原因：${rejectReason}` : ''}`,
+      data: { commentId, itemId, itemTitle, approved, rejectReason },
       relatedId: commentId,
       relatedType: 'comment'
     })
