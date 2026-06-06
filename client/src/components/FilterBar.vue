@@ -3,78 +3,79 @@
     <div class="filter-section">
       <div class="filter-search">
         <input
-        type="text"
-        class="form-input"
-        placeholder="搜索藏品名称、描述..."
-        :value="keyword"
-        @input="handleKeywordChange"
-      />
-    </div>
-
-    <div class="filter-row">
-      <div class="filter-group">
-        <label class="filter-label">分类</label>
-        <select class="form-select" :value="category" @change="handleCategoryChange">
-          <option value="">全部分类</option>
-          <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label class="filter-label">情绪标签</label>
-        <select class="form-select" :value="emotionTag" @change="handleEmotionChange">
-          <option value="">全部情绪</option>
-          <option v-for="tag in emotionTags" :key="tag" :value="tag">{{ tag }}</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label class="filter-label">排序</label>
-        <select class="form-select" :value="sortBy" @change="handleSortChange">
-          <option value="createdAt">最新发布</option>
-          <option value="price">价格</option>
-          <option value="views">浏览量</option>
-          <option value="likes">点赞数</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label class="filter-label">顺序</label>
-        <select class="form-select" :value="sortOrder" @change="handleOrderChange">
-          <option value="desc">降序</option>
-          <option value="asc">升序</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="filter-row">
-      <div class="filter-group">
-        <label class="filter-label">价格区间</label>
-        <div class="price-range">
-          <input
-          type="number"
+          type="text"
           class="form-input"
-          placeholder="最低价"
-          :value="minPrice"
-          @input="handleMinPriceChange"
-          min="0"
+          placeholder="搜索藏品名称、描述..."
+          :value="keyword"
+          @input="handleKeywordChange"
         />
-          <span class="price-separator">-</span>
-        <input
-          type="number"
-          class="form-input"
-          placeholder="最高价"
-          :value="maxPrice"
-          @input="handleMaxPriceChange"
-          min="0"
-        />
+      </div>
+
+      <div class="filter-row">
+        <div class="filter-group">
+          <label class="filter-label">分类</label>
+          <select class="form-select" :value="category" @change="handleCategoryChange">
+            <option value="">全部分类</option>
+            <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">情绪标签</label>
+          <select class="form-select" :value="emotionTag" @change="handleEmotionChange">
+            <option value="">全部情绪</option>
+            <option v-for="tag in emotionTags" :key="tag" :value="tag">{{ tag }}</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">排序</label>
+          <select class="form-select" :value="sortBy" @change="handleSortChange">
+            <option value="createdAt">最新发布</option>
+            <option value="price">价格</option>
+            <option value="views">浏览量</option>
+            <option value="likes">点赞数</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">顺序</label>
+          <select class="form-select" :value="sortOrder" @change="handleOrderChange">
+            <option value="desc">降序</option>
+            <option value="asc">升序</option>
+          </select>
         </div>
       </div>
 
-      <div class="filter-actions">
-        <button class="btn btn-ghost" @click="handleReset">
-          重置筛选
-        </button>
+      <div class="filter-row">
+        <div class="filter-group">
+          <label class="filter-label">价格区间</label>
+          <div class="price-range">
+            <input
+              type="number"
+              class="form-input"
+              placeholder="最低价"
+              :value="minPrice"
+              @input="handleMinPriceChange"
+              min="0"
+            />
+            <span class="price-separator">-</span>
+            <input
+              type="number"
+              class="form-input"
+              placeholder="最高价"
+              :value="maxPrice"
+              @input="handleMaxPriceChange"
+              min="0"
+            />
+          </div>
+        </div>
+
+        <div class="filter-actions">
+          <button class="btn btn-ghost" @click="handleReset">
+            重置筛选
+          </button>
+        </div>
       </div>
     </div>
   </div>

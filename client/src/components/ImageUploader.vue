@@ -7,9 +7,8 @@
       </button>
     </div>
 
-    <label v-else class="upload-area" :class="{ disabled ? 'disabled' : '' }">
+    <label v-else class="upload-area" :class="{ disabled }">
       <input
-        type="file"
         type="file"
         accept="image/*"
         @change="handleFileChange"
