@@ -1,32 +1,39 @@
 <template>
   <div class="profile-view">
     <div class="container">
-      <section class="profile-header card">
-        <div class="profile-avatar">
-          <span v-if="!userStore.currentUser?.avatar" class="avatar-placeholder">👤</span>
-          <img v-else :src="userStore.currentUser.avatar" :alt="displayName" />
-        </div>
-        <div class="profile-info">
-          <h1 class="profile-name">{{ displayName }}</h1>
-          <p class="profile-username">@{{ userStore.currentUser?.username }}</p>
-          <p v-if="userStore.currentUser?.bio" class="profile-bio">
-            {{ userStore.currentUser.bio }}
-          </p>
-          <p class="profile-joined">
-            加入于 {{ formatDate(userStore.currentUser?.createdAt) }}
-          </p>
-        </div>
-        <div class="profile-stats">
-          <div class="stat-item">
-            <span class="stat-value">{{ userStore.myItemsPagination.total }}</span>
-            <span class="stat-label">我的藏品</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-value">{{ userStore.myFavoritesPagination.total }}</span>
-            <span class="stat-label">收藏</span>
-          </div>
-        </div>
+      <section v-if="!userStore.currentUser" class="loading-hero card">
+        <div class="loading-spinner"></div>
+        <p>正在加载用户信息...</p>
       </section>
+
+      <template v-else>
+        <section class="profile-header card">
+          <div class="profile-avatar">
+            <span v-if="!userStore.currentUser?.avatar" class="avatar-placeholder">👤</span>
+            <img v-else :src="userStore.currentUser.avatar" :alt="displayName" />
+          </div>
+          <div class="profile-info">
+            <h1 class="profile-name">{{ displayName }}</h1>
+            <p class="profile-username">@{{ userStore.currentUser?.username }}</p>
+            <p v-if="userStore.currentUser?.bio" class="profile-bio">
+              {{ userStore.currentUser.bio }}
+            </p>
+            <p class="profile-joined">
+              加入于 {{ formatDate(userStore.currentUser?.createdAt) }}
+            </p>
+          </div>
+          <div class="profile-stats">
+            <div class="stat-item">
+              <span class="stat-value">{{ userStore.myItemsLoading && userStore.myItems.length === 0 ? '...' : userStore.myItemsPagination.total }}</span>
+              <span class="stat-label">我的藏品</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value">{{ userStore.myFavoritesLoading && userStore.myFavorites.length === 0 ? '...' : userStore.myFavoritesPagination.total }}</span>
+              <span class="stat-label">收藏</span>
+            </div>
+          </div>
+        </section>
+      </template>
 
       <div class="tabs">
         <button
@@ -328,6 +335,16 @@ onMounted(async () => {
   border-radius: 16px;
   border: 1px solid var(--color-border);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.loading-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  gap: 1rem;
+  color: var(--color-text-secondary);
 }
 
 @media (max-width: 768px) {

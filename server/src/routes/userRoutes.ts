@@ -89,28 +89,11 @@ router.put('/me', authMiddleware, async (ctx) => {
   }
 })
 
-router.get('/:id', async (ctx) => {
-  const { id } = ctx.params
-  const user = await userService.getById(id)
-
-  if (!user) {
-    ctx.status = 404
-    ctx.body = { code: 404, message: '用户不存在', data: null }
-    return
-  }
-
-  ctx.body = {
-    code: 200,
-    message: 'success',
-    data: user
-  }
-})
-
-router.get('/:id/items', async (ctx) => {
-  const { id } = ctx.params
+router.get('/me/items', authMiddleware, async (ctx) => {
+  const userId = ctx.userId!
   const query = ctx.query as QueryParams
 
-  const result = await itemService.listByOwner(id, {
+  const result = await itemService.listByOwner(userId, {
     ...query,
     page: query.page ? Number(query.page) : undefined,
     pageSize: query.pageSize ? Number(query.pageSize) : undefined
@@ -140,11 +123,11 @@ router.get('/me/favorites', authMiddleware, async (ctx) => {
   }
 })
 
-router.get('/me/items', authMiddleware, async (ctx) => {
-  const userId = ctx.userId!
+router.get('/:id/items', async (ctx) => {
+  const { id } = ctx.params
   const query = ctx.query as QueryParams
 
-  const result = await itemService.listByOwner(userId, {
+  const result = await itemService.listByOwner(id, {
     ...query,
     page: query.page ? Number(query.page) : undefined,
     pageSize: query.pageSize ? Number(query.pageSize) : undefined
@@ -154,6 +137,23 @@ router.get('/me/items', authMiddleware, async (ctx) => {
     code: 200,
     message: 'success',
     data: result
+  }
+})
+
+router.get('/:id', async (ctx) => {
+  const { id } = ctx.params
+  const user = await userService.getById(id)
+
+  if (!user) {
+    ctx.status = 404
+    ctx.body = { code: 404, message: '用户不存在', data: null }
+    return
+  }
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: user
   }
 })
 

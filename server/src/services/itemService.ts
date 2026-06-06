@@ -152,10 +152,92 @@ export const itemService = {
   },
 
   async listByOwner(ownerId: string, params: QueryParams): Promise<PaginatedResponse<Item>> {
-    return this.list({ ...params, status: undefined }).then(result => ({
-      ...result,
-      data: result.data.filter(item => item.ownerId === ownerId)
-    }))
+    await this.activateScheduledItems()
+    const {
+      page = 1,
+      pageSize = 12,
+      category,
+      emotionTag,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      keyword,
+      status,
+      minPrice,
+      maxPrice
+    } = params
+
+    const conditions: string[] = ['ownerId = ?']
+    const values: unknown[] = [ownerId]
+
+    if (status) {
+      conditions.push('status = ?')
+      values.push(status)
+    }
+
+    if (category) {
+      conditions.push('category = ?')
+      values.push(category)
+    }
+
+    if (emotionTag) {
+      conditions.push('emotionTags LIKE ?')
+      values.push(`%${emotionTag}%`)
+    }
+
+    if (keyword) {
+      conditions.push('(title LIKE ? OR description LIKE ? OR story LIKE ?)')
+      const keywordPattern = `%${keyword}%`
+      values.push(keywordPattern, keywordPattern, keywordPattern)
+    }
+
+    if (minPrice !== undefined) {
+      conditions.push('price >= ?')
+      values.push(minPrice)
+    }
+
+    if (maxPrice !== undefined) {
+      conditions.push('price <= ?')
+      values.push(maxPrice)
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`
+    const validSortFields = ['createdAt', 'price', 'views', 'likes', 'scheduledAt']
+    const validSortBy = validSortFields.includes(sortBy) ? sortBy : 'createdAt'
+    const validSortOrder = sortOrder === 'asc' ? 'ASC' : 'DESC'
+
+    return withDb((db) => {
+      let countSql = `SELECT COUNT(*) as count FROM items ${whereClause}`
+      let countResult: { count: number }
+
+      const countStmt = db.prepare(countSql)
+      countStmt.bind(values as (string | number)[])
+      countStmt.step()
+      countResult = { count: countStmt.getAsObject().count as number }
+      countStmt.free()
+
+      const offset = (page - 1) * pageSize
+      const dataSql = `
+        SELECT * FROM items ${whereClause}
+        ORDER BY ${validSortBy} ${validSortOrder}
+        LIMIT ${pageSize} OFFSET ${offset}
+      `
+
+      let data: Item[] = []
+      const dataStmt = db.prepare(dataSql)
+      dataStmt.bind(values as (string | number)[])
+      while (dataStmt.step()) {
+        data.push(rowToItem(dataStmt.get()))
+      }
+      dataStmt.free()
+
+      return {
+        data,
+        total: countResult.count,
+        page,
+        pageSize,
+        totalPages: Math.ceil(countResult.count / pageSize)
+      }
+    })
   },
 
   async getFavoritesByUserId(userId: string, params: QueryParams): Promise<PaginatedResponse<Item>> {
