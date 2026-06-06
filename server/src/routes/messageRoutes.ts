@@ -119,4 +119,22 @@ router.delete('/', authMiddleware, async (ctx) => {
   }
 })
 
+router.post('/announcement', authMiddleware, async (ctx) => {
+  const authCtx = ctx as AuthenticatedContext
+  const body = authCtx.request.body as { title?: string; content?: string } | undefined
+
+  if (!body?.title || !body?.content) {
+    authCtx.status = 400
+    authCtx.body = { code: 400, message: '标题和内容不能为空', data: null }
+    return
+  }
+
+  const messages = await messageService.broadcastSystemAnnouncement(body.title, body.content)
+  authCtx.body = {
+    code: 201,
+    message: `已向 ${messages.length} 位用户发送系统公告`,
+    data: messages
+  }
+})
+
 export default router

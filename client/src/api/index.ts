@@ -26,7 +26,10 @@ import type {
   Comment,
   CommentCreate,
   CommentQueryParams,
-  CommentStats
+  CommentStats,
+  Message,
+  MessageQueryParams,
+  MessageStats
 } from '@/types'
 
 const TOKEN_KEY = 'solo_auth_token'
@@ -264,6 +267,40 @@ export const commentApi = {
 
   delete(id: string): Promise<ApiResponse<null>> {
     return api.delete(`/comments/${id}`)
+  }
+}
+
+export const messageApi = {
+  list(params?: MessageQueryParams): Promise<ApiResponse<PaginatedResponse<Message>>> {
+    return api.get('/messages', { params })
+  },
+
+  getById(id: string): Promise<ApiResponse<Message>> {
+    return api.get(`/messages/${id}`)
+  },
+
+  getStats(): Promise<ApiResponse<MessageStats>> {
+    return api.get('/messages/stats')
+  },
+
+  markAsRead(id: string): Promise<ApiResponse<Message>> {
+    return api.put(`/messages/${id}/read`)
+  },
+
+  markAllAsRead(): Promise<ApiResponse<{ count: number }>> {
+    return api.put('/messages/read-all')
+  },
+
+  delete(id: string): Promise<ApiResponse<{ success: boolean }>> {
+    return api.delete(`/messages/${id}`)
+  },
+
+  clearAll(): Promise<ApiResponse<{ count: number }>> {
+    return api.delete('/messages')
+  },
+
+  sendAnnouncement(data: { title: string; content: string }): Promise<ApiResponse<Message[]>> {
+    return api.post('/messages/announcement', data)
   }
 }
 

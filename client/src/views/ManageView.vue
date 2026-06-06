@@ -26,6 +26,13 @@
             {{ itemStore.commentStats.pending }}
           </span>
         </button>
+        <button
+          class="manage-tab"
+          :class="{ active: activeTab === 'announcements' }"
+          @click="activeTab = 'announcements'"
+        >
+          📢 系统公告
+        </button>
       </div>
 
       <div v-if="activeTab === 'items'">
@@ -642,6 +649,56 @@
         </div>
       </div>
 
+      <div v-if="activeTab === 'announcements'">
+        <div class="manage-header">
+          <div>
+            <h1 class="page-title">系统公告</h1>
+            <p class="page-subtitle">发布全站公告通知所有用户</p>
+          </div>
+        </div>
+
+        <div class="announcement-form card">
+          <div class="form-group">
+            <label class="form-label">公告标题</label>
+            <input
+              v-model="announcementTitle"
+              type="text"
+              class="form-input"
+              placeholder="请输入公告标题"
+              maxlength="100"
+            />
+            <div class="form-hint">{{ announcementTitle.length }}/100</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">公告内容</label>
+            <textarea
+              v-model="announcementContent"
+              class="form-textarea"
+              placeholder="请输入公告内容..."
+              rows="6"
+              maxlength="2000"
+            ></textarea>
+            <div class="form-hint">{{ announcementContent.length }}/2000</div>
+          </div>
+          <div class="form-actions">
+            <button
+              class="btn btn-primary"
+              :disabled="!canSendAnnouncement || sendingAnnouncement"
+              @click="handleSendAnnouncement"
+            >
+              {{ sendingAnnouncement ? '发送中...' : '📢 发布公告' }}
+            </button>
+            <button class="btn btn-secondary" @click="resetAnnouncementForm">
+              重置
+            </button>
+          </div>
+        </div>
+
+        <div class="announcement-hint">
+          <p><strong>提示：</strong>系统公告将推送给所有注册用户，发布后无法撤回，请谨慎操作。</p>
+        </div>
+      </div>
+
       <transition name="fade">
         <div v-if="showCreateModal || showEditModal" class="modal-overlay" @click.self="closeModal">
           <div class="modal-content">
@@ -671,6 +728,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useItemStore } from '@/stores/itemStore'
 import { useOrderStore } from '@/stores/orderStore'
 import { useUserStore } from '@/stores/userStore'
+import { useMessageStore } from '@/stores/messageStore'
 import ItemForm from '@/components/ItemForm.vue'
 import type { Item, ItemCreate, ItemUpdate, ItemDraftCreate, Order, Comment, CommentStatus } from '@/types'
 import { ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, canPerformOrderAction, COMMENT_STATUS_LABEL, COMMENT_STATUS_COLOR } from '@/types'
@@ -679,8 +737,9 @@ import dayjs from 'dayjs'
 const itemStore = useItemStore()
 const orderStore = useOrderStore()
 const userStore = useUserStore()
+const messageStore = useMessageStore()
 
-const activeTab = ref<'items' | 'orders' | 'comments'>('items')
+const activeTab = ref<'items' | 'orders' | 'comments' | 'announcements'>('items')
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const editingItem = ref<Item | null>(null)
@@ -688,6 +747,14 @@ const currentStatus = ref('all')
 const currentOrderStatus = ref<string>('all')
 const currentCommentStatus = ref<CommentStatus | 'all'>('all')
 const placeholderImage = 'https://picsum.photos/seed/empty/200/200'
+
+const announcementTitle = ref('')
+const announcementContent = ref('')
+const sendingAnnouncement = ref(false)
+
+const canSendAnnouncement = computed(() => {
+  return announcementTitle.value.trim().length > 0 && announcementContent.value.trim().length > 0
+})
 
 function canDo(order: Order, action: 'confirm' | 'markPaid' | 'markShipped' | 'complete' | 'cancel') {
   const uid = userStore.currentUser?.id
@@ -975,6 +1042,31 @@ async function handleDeleteComment(comment: Comment) {
   } catch (e: any) {
     const msg = e?.response?.data?.message || '删除失败，请重试'
     alert(msg)
+  }
+}
+
+function resetAnnouncementForm() {
+  announcementTitle.value = ''
+  announcementContent.value = ''
+}
+
+async function handleSendAnnouncement() {
+  if (!canSendAnnouncement.value) return
+  if (!confirm(`确定要发布这条系统公告吗？\n\n标题：${announcementTitle.value}\n\n此公告将推送给所有用户，发布后无法撤回。`)) return
+
+  sendingAnnouncement.value = true
+  try {
+    const count = await messageStore.sendAnnouncement(
+      announcementTitle.value.trim(),
+      announcementContent.value.trim()
+    )
+    alert(`公告发布成功！已向 ${count} 位用户发送通知。`)
+    resetAnnouncementForm()
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || '发布失败，请重试'
+    alert(msg)
+  } finally {
+    sendingAnnouncement.value = false
   }
 }
 </script>
@@ -1713,5 +1805,74 @@ async function handleDeleteComment(comment: Comment) {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+.announcement-form {
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.announcement-form .form-group {
+  margin-bottom: 1.5rem;
+}
+
+.announcement-form .form-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 0.9375rem;
+}
+
+.announcement-form .form-input,
+.announcement-form .form-textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-size: 0.9375rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.announcement-form .form-input:focus,
+.announcement-form .form-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.announcement-form .form-textarea {
+  resize: vertical;
+  min-height: 150px;
+  line-height: 1.6;
+}
+
+.announcement-form .form-hint {
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+.announcement-form .form-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.announcement-hint {
+  padding: 1rem 1.25rem;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  color: #92400e;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.announcement-hint strong {
+  font-weight: 600;
 }
 </style>

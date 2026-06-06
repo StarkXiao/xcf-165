@@ -321,6 +321,74 @@ export const COMMENT_STATUS_COLOR: Record<CommentStatus, string> = {
   rejected: '#ef4444'
 }
 
+export type MessageType = 'bid_alert' | 'deal_notice' | 'review_result' | 'system_announcement'
+
+export interface Message {
+  id: string
+  userId: string
+  type: MessageType
+  title: string
+  content: string
+  data: string | null
+  isRead: boolean
+  relatedId: string | null
+  relatedType: string | null
+  createdAt: string
+  readAt: string | null
+}
+
+export interface MessageCreate {
+  userId: string
+  type: MessageType
+  title: string
+  content: string
+  data?: Record<string, unknown>
+  relatedId?: string
+  relatedType?: string
+}
+
+export interface MessageQueryParams {
+  page?: number
+  pageSize?: number
+  type?: MessageType | 'all'
+  isRead?: boolean | 'all'
+}
+
+export interface MessageStats {
+  total: number
+  unread: number
+  bidAlert: number
+  dealNotice: number
+  reviewResult: number
+  systemAnnouncement: number
+  unreadBidAlert: number
+  unreadDealNotice: number
+  unreadReviewResult: number
+  unreadSystemAnnouncement: number
+}
+
+export const MESSAGE_TYPE_LABEL: Record<MessageType | 'all', string> = {
+  all: '全部',
+  bid_alert: '出价提醒',
+  deal_notice: '成交通知',
+  review_result: '审核结果',
+  system_announcement: '系统公告'
+}
+
+export const MESSAGE_TYPE_ICON: Record<MessageType, string> = {
+  bid_alert: '🏷️',
+  deal_notice: '🛒',
+  review_result: '✅',
+  system_announcement: '📢'
+}
+
+export const MESSAGE_TYPE_COLOR: Record<MessageType, string> = {
+  bid_alert: '#f59e0b',
+  deal_notice: '#6366f1',
+  review_result: '#22c55e',
+  system_announcement: '#ef4444'
+}
+
 type OrderAction = 'confirm' | 'markPaid' | 'markShipped' | 'complete' | 'cancel'
 type OrderRole = 'buyer' | 'seller'
 

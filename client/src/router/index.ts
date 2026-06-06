@@ -40,6 +40,12 @@ const routes: RouteRecordRaw[] = [
     path: '/calendar',
     name: 'EmotionCalendar',
     component: () => import('@/views/EmotionCalendarView.vue')
+  },
+  {
+    path: '/messages',
+    name: 'Messages',
+    component: () => import('@/views/MessagesView.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 

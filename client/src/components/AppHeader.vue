@@ -25,6 +25,13 @@
         <ThemeSwitcher />
 
         <template v-if="userStore.isLoggedIn">
+          <router-link to="/messages" class="msg-btn" :title="'消息中心'">
+            <span class="msg-icon">🔔</span>
+            <span v-if="messageStore.unreadCount > 0" class="msg-badge">
+              {{ messageStore.unreadCount > 99 ? '99+' : messageStore.unreadCount }}
+            </span>
+          </router-link>
+
           <router-link to="/profile" class="user-menu" :title="displayName">
             <span v-if="!userStore.currentUser?.avatar" class="user-avatar placeholder">👤</span>
             <img v-else :src="userStore.currentUser.avatar" :alt="displayName" class="user-avatar" />
@@ -44,13 +51,15 @@
 
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import ThemeSwitcher from './ThemeSwitcher.vue'
 import { useUserStore } from '@/stores/userStore'
+import { useMessageStore } from '@/stores/messageStore'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const messageStore = useMessageStore()
 
 const displayName = computed(() => {
   return userStore.currentUser?.nickname || userStore.currentUser?.username || '用户'
@@ -58,13 +67,28 @@ const displayName = computed(() => {
 
 async function handleLogout() {
   await userStore.logout()
+  messageStore.clearMessages()
   router.push('/')
 }
+
+let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
   if (!userStore.currentUser) {
     await userStore.fetchCurrentUser()
   }
+  if (userStore.isLoggedIn) {
+    await messageStore.fetchStats()
+  }
+  refreshTimer = setInterval(async () => {
+    if (userStore.isLoggedIn) {
+      await messageStore.fetchStats()
+    }
+  }, 30000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
 
@@ -137,6 +161,55 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.msg-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  transition: all 0.2s ease;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+.msg-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-surface);
+}
+
+.msg-icon {
+  font-size: 1.1rem;
+}
+
+.msg-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--color-accent);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-surface);
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 }
 
 .user-menu {
