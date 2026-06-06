@@ -26,17 +26,45 @@ function generateToken(): string {
 
 const tokenStore = new Map<string, string>()
 
-function rowToUser(row: unknown[]): User {
+const USER_COLUMNS = [
+  'id', 'username', 'password', 'nickname', 'avatar', 'bio', 'createdAt', 'updatedAt'
+] as const
+
+const USER_SELECT = USER_COLUMNS.join(', ')
+
+function objToUser(obj: Record<string, unknown>): User {
   return {
-    id: row[0] as string,
-    username: row[1] as string,
-    password: row[2] as string,
-    nickname: (row[3] as string) || null,
-    avatar: (row[4] as string) || null,
-    bio: (row[5] as string) || null,
-    createdAt: row[6] as string,
-    updatedAt: row[7] as string
+    id: obj.id as string,
+    username: obj.username as string,
+    password: obj.password as string,
+    nickname: (obj.nickname as string) || null,
+    avatar: (obj.avatar as string) || null,
+    bio: (obj.bio as string) || null,
+    createdAt: obj.createdAt as string,
+    updatedAt: obj.updatedAt as string
   }
+}
+
+function readOneUser(db: Database, id: string): User | undefined {
+  const stmt = db.prepare(`SELECT ${USER_SELECT} FROM users WHERE id = ?`)
+  stmt.bind([id])
+  let user: User | undefined
+  if (stmt.step()) {
+    user = objToUser(stmt.getAsObject())
+  }
+  stmt.free()
+  return user
+}
+
+function readOneUserByUsername(db: Database, username: string): User | undefined {
+  const stmt = db.prepare(`SELECT ${USER_SELECT} FROM users WHERE username = ?`)
+  stmt.bind([username])
+  let user: User | undefined
+  if (stmt.step()) {
+    user = objToUser(stmt.getAsObject())
+  }
+  stmt.free()
+  return user
 }
 
 function toPublic(user: User): UserPublic {
@@ -66,10 +94,7 @@ export const userService = {
     }
 
     return withDb((db) => {
-      const existing = db.exec(
-        `SELECT * FROM users WHERE username = '${data.username}'`
-      )
-      if (existing.length > 0 && existing[0].values.length > 0) {
+      if (readOneUserByUsername(db, data.username)) {
         return { error: '用户名已存在' }
       }
 
@@ -89,8 +114,8 @@ export const userService = {
       ])
       stmt.free()
 
-      const result = db.exec(`SELECT * FROM users WHERE id = '${id}'`)
-      return toPublic(rowToUser(result[0].values[0]))
+      const user = readOneUser(db, id)
+      return toPublic(user as User)
     })
   },
 
@@ -100,14 +125,11 @@ export const userService = {
     }
 
     return withDb((db) => {
-      const result = db.exec(
-        `SELECT * FROM users WHERE username = '${data.username}'`
-      )
-      if (result.length === 0 || result[0].values.length === 0) {
+      const user = readOneUserByUsername(db, data.username)
+      if (!user) {
         return { error: '用户名或密码错误' }
       }
 
-      const user = rowToUser(result[0].values[0])
       if (!verifyPassword(data.password, user.password)) {
         return { error: '用户名或密码错误' }
       }
@@ -132,11 +154,8 @@ export const userService = {
 
   async getById(id: string): Promise<UserPublic | undefined> {
     return withDb((db) => {
-      const result = db.exec(`SELECT * FROM users WHERE id = '${id}'`)
-      if (result.length === 0 || result[0].values.length === 0) {
-        return undefined
-      }
-      return toPublic(rowToUser(result[0].values[0]))
+      const user = readOneUser(db, id)
+      return user ? toPublic(user) : undefined
     })
   },
 
@@ -168,11 +187,11 @@ export const userService = {
       }
 
       if (updates.length === 0) {
-        const result = db.exec(`SELECT * FROM users WHERE id = '${id}'`)
-        if (result.length === 0 || result[0].values.length === 0) {
+        const user = readOneUser(db, id)
+        if (!user) {
           return { error: '用户不存在' }
         }
-        return toPublic(rowToUser(result[0].values[0]))
+        return toPublic(user)
       }
 
       updates.push('updatedAt = ?')
@@ -184,11 +203,11 @@ export const userService = {
       stmt.run(values as (string | number)[])
       stmt.free()
 
-      const result = db.exec(`SELECT * FROM users WHERE id = '${id}'`)
-      if (result.length === 0 || result[0].values.length === 0) {
+      const user = readOneUser(db, id)
+      if (!user) {
         return { error: '用户不存在' }
       }
-      return toPublic(rowToUser(result[0].values[0]))
+      return toPublic(user)
     })
   }
 }

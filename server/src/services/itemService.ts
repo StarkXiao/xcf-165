@@ -12,40 +12,91 @@ async function withDb<T>(fn: (db: Database) => T): Promise<T> {
   return result
 }
 
-function rowToItem(row: unknown[]): Item {
+const ITEM_COLUMNS = [
+  'id', 'ownerId', 'title', 'description', 'story', 'price', 'imageUrl',
+  'emotionTags', 'category', 'condition', 'createdAt', 'updatedAt',
+  'views', 'likes', 'status', 'currentPrice', 'bidCount', 'soldPrice',
+  'scheduledAt', 'publishedAt'
+] as const
+
+const ITEM_SELECT = ITEM_COLUMNS.join(', ')
+
+function objToItem(obj: Record<string, unknown>): Item {
   return {
-    id: row[0] as string,
-    ownerId: (row[1] as string) || null,
-    title: row[2] as string,
-    description: row[3] as string,
-    story: row[4] as string,
-    price: row[5] as number,
-    imageUrl: row[6] as string,
-    emotionTags: row[7] as string,
-    category: row[8] as string,
-    condition: row[9] as string,
-    createdAt: row[10] as string,
-    updatedAt: row[11] as string,
-    views: row[12] as number,
-    likes: row[13] as number,
-    status: row[14] as Item['status'],
-    currentPrice: (row[15] as number) ?? 0,
-    bidCount: (row[16] as number) ?? 0,
-    soldPrice: row[17] as number | null,
-    scheduledAt: (row[18] as string) || null,
-    publishedAt: (row[19] as string) || null
+    id: obj.id as string,
+    ownerId: (obj.ownerId as string) || null,
+    title: obj.title as string,
+    description: obj.description as string,
+    story: obj.story as string,
+    price: Number(obj.price) ?? 0,
+    imageUrl: (obj.imageUrl as string) || '',
+    emotionTags: (obj.emotionTags as string) || '',
+    category: (obj.category as string) || '',
+    condition: (obj.condition as string) || '',
+    createdAt: obj.createdAt as string,
+    updatedAt: obj.updatedAt as string,
+    views: Number(obj.views) ?? 0,
+    likes: Number(obj.likes) ?? 0,
+    status: obj.status as Item['status'],
+    currentPrice: Number(obj.currentPrice) ?? 0,
+    bidCount: Number(obj.bidCount) ?? 0,
+    soldPrice: obj.soldPrice != null ? Number(obj.soldPrice) : null,
+    scheduledAt: (obj.scheduledAt as string) || null,
+    publishedAt: (obj.publishedAt as string) || null
   }
 }
 
-function rowToBid(row: unknown[]): Bid {
+const BID_COLUMNS = ['id', 'itemId', 'bidder', 'bidderId', 'amount', 'createdAt'] as const
+const BID_SELECT = BID_COLUMNS.join(', ')
+
+function objToBid(obj: Record<string, unknown>): Bid {
   return {
-    id: row[0] as string,
-    itemId: row[1] as string,
-    bidder: row[2] as string,
-    bidderId: (row[3] as string) || null,
-    amount: row[4] as number,
-    createdAt: row[5] as string
+    id: obj.id as string,
+    itemId: obj.itemId as string,
+    bidder: obj.bidder as string,
+    bidderId: (obj.bidderId as string) || null,
+    amount: Number(obj.amount) ?? 0,
+    createdAt: obj.createdAt as string
   }
+}
+
+function rowToObj(columns: readonly string[], row: unknown[]): Record<string, unknown> {
+  const obj: Record<string, unknown> = {}
+  columns.forEach((col, i) => {
+    obj[col] = row[i]
+  })
+  return obj
+}
+
+function readItemsFromExec(
+  columns: readonly string[],
+  result: { columns: string[]; values: unknown[][] }[]
+): Item[] {
+  if (result.length === 0) return []
+  const cols = result[0].columns
+  return result[0].values.map((row) => objToItem(rowToObj(cols, row)))
+}
+
+function readBidsFromExec(
+  result: { columns: string[]; values: unknown[][] }[]
+): Bid[] {
+  if (result.length === 0) return []
+  const cols = result[0].columns
+  return result[0].values.map((row) => objToBid(rowToObj(cols, row)))
+}
+
+function readOneItem(
+  db: Database,
+  id: string
+): Item | undefined {
+  const stmt = db.prepare(`SELECT ${ITEM_SELECT} FROM items WHERE id = ?`)
+  stmt.bind([id])
+  let item: Item | undefined
+  if (stmt.step()) {
+    item = objToItem(stmt.getAsObject())
+  }
+  stmt.free()
+  return item
 }
 
 export const itemService = {
@@ -109,8 +160,7 @@ export const itemService = {
       ])
       stmt.free()
 
-      const result = db.exec(`SELECT * FROM items WHERE id = '${id}'`)
-      return rowToItem(result[0].values[0])
+      return readOneItem(db, id) as Item
     })
   },
 
@@ -158,8 +208,7 @@ export const itemService = {
       ])
       stmt.free()
 
-      const result = db.exec(`SELECT * FROM items WHERE id = '${id}'`)
-      return rowToItem(result[0].values[0])
+      return readOneItem(db, id) as Item
     })
   },
 
@@ -229,7 +278,7 @@ export const itemService = {
 
       const offset = (page - 1) * pageSize
       const dataSql = `
-        SELECT * FROM items ${whereClause}
+        SELECT ${ITEM_SELECT} FROM items ${whereClause}
         ORDER BY ${validSortBy} ${validSortOrder}
         LIMIT ${pageSize} OFFSET ${offset}
       `
@@ -238,7 +287,7 @@ export const itemService = {
       const dataStmt = db.prepare(dataSql)
       dataStmt.bind(values as (string | number)[])
       while (dataStmt.step()) {
-        data.push(rowToItem(dataStmt.get()))
+        data.push(objToItem(dataStmt.getAsObject()))
       }
       dataStmt.free()
 
@@ -261,15 +310,20 @@ export const itemService = {
       const total = (countResult[0]?.values[0]?.[0] as number) || 0
 
       const offset = (page - 1) * pageSize
-      const result = db.exec(
-        `SELECT items.* FROM items
+      const stmt = db.prepare(
+        `SELECT ${ITEM_SELECT} FROM items
          INNER JOIN favorites ON items.id = favorites.itemId
-         WHERE favorites.userId = '${userId}'
+         WHERE favorites.userId = ?
          ORDER BY favorites.createdAt DESC
-         LIMIT ${pageSize} OFFSET ${offset}`
+         LIMIT ? OFFSET ?`
       )
+      stmt.bind([userId, pageSize, offset])
+      const data: Item[] = []
+      while (stmt.step()) {
+        data.push(objToItem(stmt.getAsObject()))
+      }
+      stmt.free()
 
-      const data = result.length > 0 ? result[0].values.map(rowToItem) : []
       return {
         data,
         total,
@@ -299,13 +353,20 @@ export const itemService = {
         )
         stmt.run([id, userId, itemId, now])
         stmt.free()
-        const result = db.exec(`SELECT * FROM favorites WHERE id = '${id}'`)
-        return {
-          id: result[0].values[0][0] as string,
-          userId: result[0].values[0][1] as string,
-          itemId: result[0].values[0][2] as string,
-          createdAt: result[0].values[0][3] as string
+        const favStmt = db.prepare(`SELECT id, userId, itemId, createdAt FROM favorites WHERE id = ?`)
+        favStmt.bind([id])
+        let fav: Favorite | undefined
+        if (favStmt.step()) {
+          const obj = favStmt.getAsObject()
+          fav = {
+            id: obj.id as string,
+            userId: obj.userId as string,
+            itemId: obj.itemId as string,
+            createdAt: obj.createdAt as string
+          }
         }
+        favStmt.free()
+        return fav as Favorite
       } catch (e) {
         return { error: '已收藏该藏品' }
       }
@@ -325,14 +386,12 @@ export const itemService = {
   async getById(id: string): Promise<Item | undefined> {
     await this.activateScheduledItems()
     return withDb((db) => {
-      db.run(`UPDATE items SET views = views + 1 WHERE id = '${id}'`)
+      db.run(`UPDATE items SET views = views + 1 WHERE id = ?`, [id])
 
-      const result = db.exec(`SELECT * FROM items WHERE id = '${id}'`)
-      if (result.length === 0 || result[0].values.length === 0) {
-        return undefined
+      const item = readOneItem(db, id)
+      if (item) {
+        item.views += 1
       }
-      const item = rowToItem(result[0].values[0])
-      item.views += 1
       return item
     })
   },
@@ -408,25 +467,20 @@ export const itemService = {
 
       const offset = (page - 1) * pageSize
       const dataSql = `
-        SELECT * FROM items ${whereClause}
+        SELECT ${ITEM_SELECT} FROM items ${whereClause}
         ORDER BY ${validSortBy} ${validSortOrder}
         LIMIT ${pageSize} OFFSET ${offset}
       `
 
       let data: Item[] = []
+      const dataStmt = db.prepare(dataSql)
       if (values.length > 0) {
-        const dataStmt = db.prepare(dataSql)
         dataStmt.bind(values as (string | number)[])
-        while (dataStmt.step()) {
-          data.push(rowToItem(dataStmt.get()))
-        }
-        dataStmt.free()
-      } else {
-        const res = db.exec(dataSql)
-        if (res.length > 0) {
-          data = res[0].values.map(rowToItem)
-        }
       }
+      while (dataStmt.step()) {
+        data.push(objToItem(dataStmt.getAsObject()))
+      }
+      dataStmt.free()
 
       return {
         data,
@@ -490,11 +544,7 @@ export const itemService = {
       stmt.run(values as (string | number)[])
       stmt.free()
 
-      const result = db.exec(`SELECT * FROM items WHERE id = '${id}'`)
-      if (result.length === 0 || result[0].values.length === 0) {
-        return undefined
-      }
-      return rowToItem(result[0].values[0])
+      return readOneItem(db, id)
     })
   },
 
@@ -562,11 +612,10 @@ export const itemService = {
     const id = uuidv4()
 
     return withDb((db) => {
-      const itemResult = db.exec(`SELECT * FROM items WHERE id = '${data.itemId}'`)
-      if (itemResult.length === 0 || itemResult[0].values.length === 0) {
+      const item = readOneItem(db, data.itemId)
+      if (!item) {
         return { error: '拍品不存在' }
       }
-      const item = rowToItem(itemResult[0].values[0])
 
       if (item.status !== 'active') {
         return { error: '该拍品已结束竞拍或未上架' }
@@ -589,31 +638,39 @@ export const itemService = {
       updateStmt.run([data.amount, now, data.itemId])
       updateStmt.free()
 
-      const bidResult = db.exec(`SELECT * FROM bids WHERE id = '${id}'`)
-      return rowToBid(bidResult[0].values[0])
+      const bidGetStmt = db.prepare(`SELECT ${BID_SELECT} FROM bids WHERE id = ?`)
+      bidGetStmt.bind([id])
+      let bid: Bid | undefined
+      if (bidGetStmt.step()) {
+        bid = objToBid(bidGetStmt.getAsObject())
+      }
+      bidGetStmt.free()
+      return bid as Bid
     })
   },
 
   async getBidsByItemId(itemId: string): Promise<Bid[]> {
     return withDb((db) => {
-      const result = db.exec(
-        `SELECT * FROM bids WHERE itemId = '${itemId}' ORDER BY createdAt DESC`
+      const stmt = db.prepare(
+        `SELECT ${BID_SELECT} FROM bids WHERE itemId = ? ORDER BY createdAt DESC`
       )
-      if (result.length === 0 || result[0].values.length === 0) {
-        return []
+      stmt.bind([itemId])
+      const bids: Bid[] = []
+      while (stmt.step()) {
+        bids.push(objToBid(stmt.getAsObject()))
       }
-      return result[0].values.map(rowToBid)
+      stmt.free()
+      return bids
     })
   },
 
   async markAsSold(id: string): Promise<Item | undefined> {
     const now = dayjs().toISOString()
     return withDb((db) => {
-      const itemResult = db.exec(`SELECT * FROM items WHERE id = '${id}'`)
-      if (itemResult.length === 0 || itemResult[0].values.length === 0) {
+      const item = readOneItem(db, id)
+      if (!item) {
         return undefined
       }
-      const item = rowToItem(itemResult[0].values[0])
       const soldPrice = item.currentPrice || item.price
 
       const stmt = db.prepare(
@@ -622,8 +679,7 @@ export const itemService = {
       stmt.run([soldPrice, now, id])
       stmt.free()
 
-      const result = db.exec(`SELECT * FROM items WHERE id = '${id}'`)
-      return rowToItem(result[0].values[0])
+      return readOneItem(db, id)
     })
   },
 
@@ -653,7 +709,7 @@ export const itemService = {
 
     return withDb((db) => {
       const dataSql = `
-        SELECT * FROM items ${whereClause}
+        SELECT ${ITEM_SELECT} FROM items ${whereClause}
         ORDER BY COALESCE(publishedAt, scheduledAt, createdAt) DESC
       `
 
@@ -661,7 +717,7 @@ export const itemService = {
       const dataStmt = db.prepare(dataSql)
       dataStmt.bind(values as (string | number)[])
       while (dataStmt.step()) {
-        items.push(rowToItem(dataStmt.get()))
+        items.push(objToItem(dataStmt.getAsObject()))
       }
       dataStmt.free()
 

@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import dayjs from 'dayjs'
 import { getDatabase, saveDatabase } from '../database'
-import type { Order, OrderCreate, OrderQueryParams, PaginatedResponse, OrderStatus } from '../types'
+import type { Order, OrderCreate, OrderQueryParams, PaginatedResponse, OrderStatus, Item } from '../types'
 import type { Database } from 'sql.js'
 
 async function withDb<T>(fn: (db: Database) => T): Promise<T> {
@@ -11,28 +11,81 @@ async function withDb<T>(fn: (db: Database) => T): Promise<T> {
   return result
 }
 
-function rowToOrder(row: unknown[]): Order {
+const ORDER_COLUMNS = [
+  'id', 'itemId', 'itemTitle', 'itemImageUrl', 'sellerId', 'buyerId',
+  'buyerName', 'buyerPhone', 'buyerAddress', 'price', 'status', 'remark',
+  'createdAt', 'updatedAt', 'confirmedAt', 'paidAt', 'shippedAt', 'completedAt', 'cancelledAt'
+] as const
+
+const ORDER_SELECT = ORDER_COLUMNS.join(', ')
+
+const ITEM_COLUMNS = [
+  'id', 'ownerId', 'title', 'description', 'story', 'price', 'imageUrl',
+  'emotionTags', 'category', 'condition', 'createdAt', 'updatedAt',
+  'views', 'likes', 'status', 'currentPrice', 'bidCount', 'soldPrice',
+  'scheduledAt', 'publishedAt'
+] as const
+
+const ITEM_SELECT = ITEM_COLUMNS.join(', ')
+
+function objToOrder(obj: Record<string, unknown>): Order {
   return {
-    id: row[0] as string,
-    itemId: row[1] as string,
-    itemTitle: row[2] as string,
-    itemImageUrl: (row[3] as string) || null,
-    sellerId: (row[4] as string) || null,
-    buyerId: (row[5] as string) || null,
-    buyerName: row[6] as string,
-    buyerPhone: (row[7] as string) || null,
-    buyerAddress: (row[8] as string) || null,
-    price: row[9] as number,
-    status: row[10] as OrderStatus,
-    remark: (row[11] as string) || null,
-    createdAt: row[12] as string,
-    updatedAt: row[13] as string,
-    confirmedAt: (row[14] as string) || null,
-    paidAt: (row[15] as string) || null,
-    shippedAt: (row[16] as string) || null,
-    completedAt: (row[17] as string) || null,
-    cancelledAt: (row[18] as string) || null
+    id: obj.id as string,
+    itemId: obj.itemId as string,
+    itemTitle: obj.itemTitle as string,
+    itemImageUrl: (obj.itemImageUrl as string) || null,
+    sellerId: (obj.sellerId as string) || null,
+    buyerId: (obj.buyerId as string) || null,
+    buyerName: obj.buyerName as string,
+    buyerPhone: (obj.buyerPhone as string) || null,
+    buyerAddress: (obj.buyerAddress as string) || null,
+    price: Number(obj.price) ?? 0,
+    status: obj.status as OrderStatus,
+    remark: (obj.remark as string) || null,
+    createdAt: obj.createdAt as string,
+    updatedAt: obj.updatedAt as string,
+    confirmedAt: (obj.confirmedAt as string) || null,
+    paidAt: (obj.paidAt as string) || null,
+    shippedAt: (obj.shippedAt as string) || null,
+    completedAt: (obj.completedAt as string) || null,
+    cancelledAt: (obj.cancelledAt as string) || null
   }
+}
+
+function objToItem(obj: Record<string, unknown>): Item {
+  return {
+    id: obj.id as string,
+    ownerId: (obj.ownerId as string) || null,
+    title: obj.title as string,
+    description: obj.description as string,
+    story: obj.story as string,
+    price: Number(obj.price) ?? 0,
+    imageUrl: (obj.imageUrl as string) || '',
+    emotionTags: (obj.emotionTags as string) || '',
+    category: (obj.category as string) || '',
+    condition: (obj.condition as string) || '',
+    createdAt: obj.createdAt as string,
+    updatedAt: obj.updatedAt as string,
+    views: Number(obj.views) ?? 0,
+    likes: Number(obj.likes) ?? 0,
+    status: obj.status as Item['status'],
+    currentPrice: Number(obj.currentPrice) ?? 0,
+    bidCount: Number(obj.bidCount) ?? 0,
+    soldPrice: obj.soldPrice != null ? Number(obj.soldPrice) : null,
+    scheduledAt: (obj.scheduledAt as string) || null,
+    publishedAt: (obj.publishedAt as string) || null
+  }
+}
+
+function readOneOrder(db: Database, id: string): Order | undefined {
+  const stmt = db.prepare(`SELECT ${ORDER_SELECT} FROM orders WHERE id = ?`)
+  stmt.bind([id])
+  let order: Order | undefined
+  if (stmt.step()) {
+    order = objToOrder(stmt.getAsObject())
+  }
+  stmt.free()
+  return order
 }
 
 const STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
@@ -113,28 +166,27 @@ export const orderService = {
         return { error: '用户信息无效，请重新登录' }
       }
 
-      const itemStmt = db.prepare(`SELECT * FROM items WHERE id = ?`)
+      const itemStmt = db.prepare(`SELECT ${ITEM_SELECT} FROM items WHERE id = ?`)
       itemStmt.bind([data.itemId])
       if (!itemStmt.step()) {
         itemStmt.free()
         return { error: '藏品不存在' }
       }
-      const itemObj = itemStmt.getAsObject() as Record<string, unknown>
+      const itemObj = itemStmt.getAsObject()
       itemStmt.free()
+      const item = objToItem(itemObj)
 
-      const itemStatus = itemObj.status as string
-      if (itemStatus !== 'active') {
-        if (itemStatus === 'sold' || itemStatus === 'archived') {
+      if (item.status !== 'active') {
+        if (item.status === 'sold' || item.status === 'archived') {
           return { error: '该藏品已成交或已下架，无法下单' }
         }
-        if (itemStatus === 'draft' || itemStatus === 'scheduled') {
+        if (item.status === 'draft' || item.status === 'scheduled') {
           return { error: '该藏品尚未上架，无法下单' }
         }
         return { error: '该藏品不可下单' }
       }
 
-      const ownerId = (itemObj.ownerId as string) || null
-      if (ownerId && ownerId === buyerId) {
+      if (item.ownerId && item.ownerId === buyerId) {
         return { error: '不能对自己上架的藏品下单' }
       }
 
@@ -150,10 +202,10 @@ export const orderService = {
         return { error: '该藏品已有进行中的订单' }
       }
 
-      const price = ((itemObj.currentPrice as number) || (itemObj.price as number)) as number
-      const sellerId = ownerId
-      const itemTitle = itemObj.title as string
-      const itemImageUrl = (itemObj.imageUrl as string) || null
+      const price = item.currentPrice || item.price
+      const sellerId = item.ownerId
+      const itemTitle = item.title
+      const itemImageUrl = item.imageUrl || null
       const finalBuyerName = data.buyerName?.trim() || buyerNameFromDb
 
       const stmt = db.prepare(
@@ -180,19 +232,12 @@ export const orderService = {
       ])
       stmt.free()
 
-      const result = db.exec(`SELECT * FROM orders WHERE id = '${id}'`)
-      return rowToOrder(result[0].values[0])
+      return readOneOrder(db, id) as Order
     })
   },
 
   async getById(id: string): Promise<Order | undefined> {
-    return withDb((db) => {
-      const result = db.exec(`SELECT * FROM orders WHERE id = '${id}'`)
-      if (result.length === 0 || result[0].values.length === 0) {
-        return undefined
-      }
-      return rowToOrder(result[0].values[0])
-    })
+    return withDb((db) => readOneOrder(db, id))
   },
 
   async list(params: OrderQueryParams, userId?: string): Promise<PaginatedResponse<Order>> {
@@ -250,25 +295,19 @@ export const orderService = {
 
       const offset = (page - 1) * pageSize
       const dataSql = `
-        SELECT * FROM orders ${whereClause}
+        SELECT ${ORDER_SELECT} FROM orders ${whereClause}
         ORDER BY createdAt DESC
-        LIMIT ${pageSize} OFFSET ${offset}
+        LIMIT ? OFFSET ?
       `
 
-      let data: Order[] = []
-      if (values.length > 0) {
-        const dataStmt = db.prepare(dataSql)
-        dataStmt.bind(values as (string | number)[])
-        while (dataStmt.step()) {
-          data.push(rowToOrder(dataStmt.get()))
-        }
-        dataStmt.free()
-      } else {
-        const res = db.exec(dataSql)
-        if (res.length > 0) {
-          data = res[0].values.map(rowToOrder)
-        }
+      const data: Order[] = []
+      const dataStmt = db.prepare(dataSql)
+      const bindValues = [...values, pageSize, offset]
+      dataStmt.bind(bindValues as (string | number)[])
+      while (dataStmt.step()) {
+        data.push(objToOrder(dataStmt.getAsObject()))
       }
+      dataStmt.free()
 
       return {
         data,
@@ -288,11 +327,10 @@ export const orderService = {
     const now = dayjs().toISOString()
 
     return withDb((db) => {
-      const result = db.exec(`SELECT * FROM orders WHERE id = '${id}'`)
-      if (result.length === 0 || result[0].values.length === 0) {
+      const order = readOneOrder(db, id)
+      if (!order) {
         return { error: '订单不存在' }
       }
-      const order = rowToOrder(result[0].values[0])
 
       if (!canTransition(order.status, newStatus)) {
         return { error: `无法从 ${order.status} 状态变更为 ${newStatus}` }
@@ -310,8 +348,7 @@ export const orderService = {
       stmt.run([newStatus, now, now, id])
       stmt.free()
 
-      const updatedResult = db.exec(`SELECT * FROM orders WHERE id = '${id}'`)
-      return rowToOrder(updatedResult[0].values[0])
+      return readOneOrder(db, id) as Order
     })
   },
 
@@ -367,7 +404,7 @@ export const orderService = {
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-      let sql = `
+      const sql = `
         SELECT
           COUNT(*) as total,
           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
@@ -390,16 +427,10 @@ export const orderService = {
         stmt.free()
       } else {
         const result = db.exec(sql)
-        rowObj = {
-          total: result[0].values[0][0],
-          pending: result[0].values[0][1],
-          confirmed: result[0].values[0][2],
-          paid: result[0].values[0][3],
-          shipped: result[0].values[0][4],
-          completed: result[0].values[0][5],
-          cancelled: result[0].values[0][6],
-          totalAmount: result[0].values[0][7]
-        }
+        const cols = result[0].columns
+        const row = result[0].values[0]
+        rowObj = {}
+        cols.forEach((c, i) => { rowObj[c] = row[i] })
       }
 
       return {
