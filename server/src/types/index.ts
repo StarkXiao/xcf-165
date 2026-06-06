@@ -250,3 +250,49 @@ export interface CommentQueryParams {
   itemId?: string
   keyword?: string
 }
+
+export type MessageType = 'bid_alert' | 'deal_notice' | 'review_result' | 'system_announcement'
+
+export interface Message {
+  id: string
+  userId: string
+  type: MessageType
+  title: string
+  content: string
+  data: string | null
+  isRead: boolean
+  relatedId: string | null
+  relatedType: string | null
+  createdAt: string
+  readAt: string | null
+}
+
+export interface MessageCreate {
+  userId: string
+  type: MessageType
+  title: string
+  content: string
+  data?: Record<string, unknown>
+  relatedId?: string
+  relatedType?: string
+}
+
+export interface MessageQueryParams {
+  page?: number
+  pageSize?: number
+  type?: MessageType | 'all'
+  isRead?: boolean | 'all'
+}
+
+export interface MessageStats {
+  total: number
+  unread: number
+  bidAlert: number
+  dealNotice: number
+  reviewResult: number
+  systemAnnouncement: number
+  unreadBidAlert: number
+  unreadDealNotice: number
+  unreadReviewResult: number
+  unreadSystemAnnouncement: number
+}

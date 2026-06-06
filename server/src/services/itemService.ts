@@ -4,10 +4,11 @@ import { getDatabase, saveDatabase } from '../database'
 import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, Bid, BidCreate, Favorite, CalendarQueryParams, CalendarData, CalendarDayItem } from '../types'
 import type { Database } from 'sql.js'
 import { EMOTION_TAGS } from '../types'
+import { messageService } from './messageService'
 
-async function withDb<T>(fn: (db: Database) => T): Promise<T> {
+async function withDb<T>(fn: (db: Database) => T | Promise<T>): Promise<T> {
   const db = await getDatabase()
-  const result = fn(db)
+  const result = await fn(db)
   saveDatabase(db)
   return result
 }
@@ -611,7 +612,7 @@ export const itemService = {
     const now = dayjs().toISOString()
     const id = uuidv4()
 
-    return withDb((db) => {
+    return withDb(async (db) => {
       const item = readOneItem(db, data.itemId)
       if (!item) {
         return { error: '拍品不存在' }
@@ -645,6 +646,15 @@ export const itemService = {
         bid = objToBid(bidGetStmt.getAsObject())
       }
       bidGetStmt.free()
+
+      if (bid && item.ownerId) {
+        try {
+          await messageService.sendBidAlert(item.ownerId, item.id, item.title, data.bidder, data.amount)
+        } catch (e) {
+          console.error('[出价提醒] 发送消息失败:', e)
+        }
+      }
+
       return bid as Bid
     })
   },

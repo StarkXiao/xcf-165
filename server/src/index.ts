@@ -10,6 +10,7 @@ import itemRoutes from './routes/itemRoutes'
 import userRoutes from './routes/userRoutes'
 import orderRoutes from './routes/orderRoutes'
 import commentRoutes from './routes/commentRoutes'
+import messageRoutes from './routes/messageRoutes'
 import { itemService } from './services/itemService'
 
 async function start() {
@@ -79,6 +80,8 @@ async function start() {
   app.use(orderRoutes.allowedMethods())
   app.use(commentRoutes.routes())
   app.use(commentRoutes.allowedMethods())
+  app.use(messageRoutes.routes())
+  app.use(messageRoutes.allowedMethods())
 
   app.use(responseHandler)
 

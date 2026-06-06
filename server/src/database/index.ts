@@ -165,6 +165,23 @@ function initTables(db: Database) {
       FOREIGN KEY (parentId) REFERENCES comments(id)
     )
   `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      data TEXT,
+      isRead INTEGER NOT NULL DEFAULT 0,
+      relatedId TEXT,
+      relatedType TEXT,
+      createdAt TEXT NOT NULL,
+      readAt TEXT,
+      FOREIGN KEY (userId) REFERENCES users(id)
+    )
+  `)
 }
 
 export function saveDatabase(db: Database): void {

@@ -3,10 +3,11 @@ import dayjs from 'dayjs'
 import { getDatabase, saveDatabase } from '../database'
 import type { Comment, CommentCreate, CommentQueryParams, PaginatedResponse, CommentStatus } from '../types'
 import type { Database } from 'sql.js'
+import { messageService } from './messageService'
 
-async function withDb<T>(fn: (db: Database) => T): Promise<T> {
+async function withDb<T>(fn: (db: Database) => T | Promise<T>): Promise<T> {
   const db = await getDatabase()
-  const result = fn(db)
+  const result = await fn(db)
   saveDatabase(db)
   return result
 }
@@ -275,7 +276,7 @@ export const commentService = {
 
   async approve(id: string, userId: string): Promise<Comment | undefined | { error: string; unauthorized?: boolean }> {
     const now = dayjs().toISOString()
-    return withDb((db) => {
+    const result = await withDb(async (db) => {
       const comment = readOneComment(db, id)
       if (!comment) {
         return { error: '留言不存在' }
@@ -289,13 +290,34 @@ export const commentService = {
       stmt.run([now, id])
       stmt.free()
 
-      return readOneComment(db, id)
+      const updatedComment = readOneComment(db, id)
+
+      if (updatedComment && comment.userId) {
+        try {
+          const info = await commentService.getItemInfoByCommentId(id)
+          if (info) {
+            await messageService.sendCommentReviewResult(
+              comment.userId,
+              id,
+              info.itemId,
+              info.itemTitle,
+              true
+            )
+          }
+        } catch (e) {
+          console.error('[审核通知] 发送消息失败:', e)
+        }
+      }
+
+      return updatedComment
     })
+
+    return result
   },
 
   async reject(id: string, userId: string): Promise<Comment | undefined | { error: string; unauthorized?: boolean }> {
     const now = dayjs().toISOString()
-    return withDb((db) => {
+    const result = await withDb(async (db) => {
       const comment = readOneComment(db, id)
       if (!comment) {
         return { error: '留言不存在' }
@@ -309,8 +331,29 @@ export const commentService = {
       stmt.run([now, id])
       stmt.free()
 
-      return readOneComment(db, id)
+      const updatedComment = readOneComment(db, id)
+
+      if (updatedComment && comment.userId) {
+        try {
+          const info = await commentService.getItemInfoByCommentId(id)
+          if (info) {
+            await messageService.sendCommentReviewResult(
+              comment.userId,
+              id,
+              info.itemId,
+              info.itemTitle,
+              false
+            )
+          }
+        } catch (e) {
+          console.error('[审核通知] 发送消息失败:', e)
+        }
+      }
+
+      return updatedComment
     })
+
+    return result
   },
 
   async delete(id: string, userId: string): Promise<boolean | { error: string; unauthorized?: boolean }> {

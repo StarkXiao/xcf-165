@@ -3,10 +3,11 @@ import dayjs from 'dayjs'
 import { getDatabase, saveDatabase } from '../database'
 import type { Order, OrderCreate, OrderQueryParams, PaginatedResponse, OrderStatus, Item } from '../types'
 import type { Database } from 'sql.js'
+import { messageService } from './messageService'
 
-async function withDb<T>(fn: (db: Database) => T): Promise<T> {
+async function withDb<T>(fn: (db: Database) => T | Promise<T>): Promise<T> {
   const db = await getDatabase()
-  const result = fn(db)
+  const result = await fn(db)
   saveDatabase(db)
   return result
 }
@@ -152,7 +153,7 @@ export const orderService = {
     const now = dayjs().toISOString()
     const id = uuidv4()
 
-    return withDb((db) => {
+    const result = await withDb(async (db) => {
       const userStmt = db.prepare(`SELECT username, nickname FROM users WHERE id = ?`)
       userStmt.bind([buyerId])
       let buyerNameFromDb = ''
@@ -232,8 +233,23 @@ export const orderService = {
       ])
       stmt.free()
 
-      return readOneOrder(db, id) as Order
+      const order = readOneOrder(db, id) as Order
+
+      try {
+        if (buyerId) {
+          await messageService.sendDealNotice(buyerId, 'buyer', data.itemId, itemTitle, id, price, 'pending')
+        }
+        if (sellerId) {
+          await messageService.sendDealNotice(sellerId, 'seller', data.itemId, itemTitle, id, price, 'pending')
+        }
+      } catch (e) {
+        console.error('[订单通知] 发送消息失败:', e)
+      }
+
+      return order
     })
+
+    return result
   },
 
   async getById(id: string): Promise<Order | undefined> {
@@ -326,7 +342,7 @@ export const orderService = {
   ): Promise<Order | { error: string }> {
     const now = dayjs().toISOString()
 
-    return withDb((db) => {
+    const result = await withDb(async (db) => {
       const order = readOneOrder(db, id)
       if (!order) {
         return { error: '订单不存在' }
@@ -348,8 +364,23 @@ export const orderService = {
       stmt.run([newStatus, now, now, id])
       stmt.free()
 
-      return readOneOrder(db, id) as Order
+      const updatedOrder = readOneOrder(db, id) as Order
+
+      try {
+        if (order.buyerId) {
+          await messageService.sendDealNotice(order.buyerId, 'buyer', order.itemId, order.itemTitle, id, order.price, newStatus)
+        }
+        if (order.sellerId) {
+          await messageService.sendDealNotice(order.sellerId, 'seller', order.itemId, order.itemTitle, id, order.price, newStatus)
+        }
+      } catch (e) {
+        console.error('[订单通知] 发送消息失败:', e)
+      }
+
+      return updatedOrder
     })
+
+    return result
   },
 
   async confirm(id: string, userId: string): Promise<Order | { error: string }> {
