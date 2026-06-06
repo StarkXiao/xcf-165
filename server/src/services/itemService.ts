@@ -639,9 +639,8 @@ export const itemService = {
 
     const conditions: string[] = [
       'status IN (\'active\', \'sold\')',
-      'publishedAt IS NOT NULL',
-      'publishedAt >= ?',
-      'publishedAt <= ?'
+      'COALESCE(publishedAt, scheduledAt, createdAt) >= ?',
+      'COALESCE(publishedAt, scheduledAt, createdAt) <= ?'
     ]
     const values: unknown[] = [startDate.toISOString(), endDate.toISOString()]
 
@@ -655,7 +654,7 @@ export const itemService = {
     return withDb((db) => {
       const dataSql = `
         SELECT * FROM items ${whereClause}
-        ORDER BY publishedAt DESC
+        ORDER BY COALESCE(publishedAt, scheduledAt, createdAt) DESC
       `
 
       let items: Item[] = []
@@ -668,7 +667,7 @@ export const itemService = {
 
       const daysMap = new Map<string, Item[]>()
       items.forEach((item) => {
-        const publishDate = item.publishedAt || item.createdAt
+        const publishDate = item.publishedAt || item.scheduledAt || item.createdAt
         const dateKey = dayjs(publishDate).format('YYYY-MM-DD')
         if (!daysMap.has(dateKey)) {
           daysMap.set(dateKey, [])

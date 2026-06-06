@@ -89,6 +89,8 @@ function initTables(db: Database) {
     db.run(`ALTER TABLE items ADD COLUMN publishedAt TEXT`)
   }
 
+  migratePublishedAt(db)
+
   db.run(`
     CREATE TABLE IF NOT EXISTS bids (
       id TEXT PRIMARY KEY,
@@ -156,6 +158,15 @@ export function saveDatabase(db: Database): void {
     fs.mkdirSync(dbDir, { recursive: true })
   }
   fs.writeFileSync(config.dbPath, buffer)
+}
+
+function migratePublishedAt(db: Database): void {
+  db.run(`
+    UPDATE items 
+    SET publishedAt = COALESCE(scheduledAt, createdAt)
+    WHERE status IN ('active', 'sold') 
+      AND publishedAt IS NULL
+  `)
 }
 
 export function closeDatabase(): void {
