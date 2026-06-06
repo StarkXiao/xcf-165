@@ -33,6 +33,12 @@
         >
           📢 系统公告
         </button>
+        <button
+          class="manage-tab"
+          @click="switchToModeration"
+        >
+          ⚙️ 审核管理
+        </button>
       </div>
 
       <div v-if="activeTab === 'items'">
@@ -611,6 +617,25 @@
             <div class="comment-manage-content">
               {{ comment.content }}
             </div>
+            <div v-if="comment.status === 'rejected' && (comment.rejectReason || comment.reviewedAt)" class="comment-review-info reject">
+              <div class="review-info-title">
+                <span class="review-icon">❌</span>
+                <strong>已驳回</strong>
+                <span v-if="comment.reviewedAt" class="review-time">
+                  {{ formatDateTime(comment.reviewedAt) }}
+                </span>
+              </div>
+              <p v-if="comment.rejectReason" class="review-reason">
+                驳回原因：{{ comment.rejectReason }}
+              </p>
+            </div>
+            <div v-else-if="comment.status === 'approved' && comment.reviewedAt" class="comment-review-info approve">
+              <div class="review-info-title">
+                <span class="review-icon">✅</span>
+                <strong>已通过</strong>
+                <span class="review-time">{{ formatDateTime(comment.reviewedAt) }}</span>
+              </div>
+            </div>
             <div class="comment-manage-actions">
               <button
                 v-if="comment.status !== 'approved'"
@@ -719,21 +744,118 @@
           </div>
         </div>
       </transition>
+
+      <transition name="fade">
+        <div v-if="showRejectModal" class="modal-overlay" @click.self="closeRejectModal">
+          <div class="modal-content modal-content-sm">
+            <div class="modal-header">
+              <h2>拒绝留言</h2>
+              <button class="btn btn-ghost btn-sm" @click="closeRejectModal">
+                ✕
+              </button>
+            </div>
+            <div class="modal-body" v-if="rejectingComment">
+              <div class="reject-preview">
+                <div class="reject-preview-label">留言内容：</div>
+                <div class="reject-preview-content">{{ rejectingComment.content }}</div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">选择驳回原因模板</label>
+                <div v-if="rejectTemplates.length > 0" class="template-list">
+                  <label
+                    v-for="tpl in rejectTemplates"
+                    :key="tpl.id"
+                    class="template-item"
+                    :class="{ active: rejectSelectedTemplateId === tpl.id }"
+                  >
+                    <input
+                      type="radio"
+                      :value="tpl.id"
+                      v-model="rejectSelectedTemplateId"
+                      style="display:none"
+                    />
+                    <div class="template-title">
+                      {{ tpl.title }}
+                      <span v-if="tpl.isDefault" class="template-default">默认</span>
+                    </div>
+                    <div class="template-desc">{{ tpl.description }}</div>
+                  </label>
+                  <label
+                    class="template-item"
+                    :class="{ active: rejectSelectedTemplateId === '' && rejectCustomReason.trim() }"
+                  >
+                    <input
+                      type="radio"
+                      value=""
+                      v-model="rejectSelectedTemplateId"
+                      style="display:none"
+                    />
+                    <div class="template-title">自定义原因</div>
+                  </label>
+                </div>
+                <div v-else class="no-templates">
+                  <p>暂无驳回原因模板，可直接填写自定义原因</p>
+                </div>
+              </div>
+
+              <div class="form-group" v-if="rejectSelectedTemplateId === ''">
+                <label class="form-label">自定义驳回原因 <span class="required">*</span></label>
+                <textarea
+                  v-model="rejectCustomReason"
+                  class="form-textarea"
+                  rows="3"
+                  placeholder="请输入驳回原因..."
+                  maxlength="500"
+                ></textarea>
+                <div class="form-hint">{{ rejectCustomReason.length }}/500</div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">备注（选填，仅内部可见）</label>
+                <textarea
+                  v-model="rejectRemark"
+                  class="form-textarea"
+                  rows="2"
+                  placeholder="补充说明..."
+                  maxlength="500"
+                ></textarea>
+              </div>
+
+              <div class="form-actions">
+                <button
+                  class="btn btn-danger"
+                  :disabled="!canRejectSubmit || rejectingLoading"
+                  @click="submitReject"
+                >
+                  {{ rejectingLoading ? '提交中...' : '确认驳回' }}
+                </button>
+                <button class="btn btn-secondary" @click="closeRejectModal" :disabled="rejectingLoading">
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </transition>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useItemStore } from '@/stores/itemStore'
 import { useOrderStore } from '@/stores/orderStore'
 import { useUserStore } from '@/stores/userStore'
 import { useMessageStore } from '@/stores/messageStore'
 import ItemForm from '@/components/ItemForm.vue'
-import type { Item, ItemCreate, ItemUpdate, ItemDraftCreate, Order, Comment, CommentStatus } from '@/types'
+import { moderationApi } from '@/api'
+import type { Item, ItemCreate, ItemUpdate, ItemDraftCreate, Order, Comment, CommentStatus, CommentReject, RejectReasonTemplate } from '@/types'
 import { ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, canPerformOrderAction, COMMENT_STATUS_LABEL, COMMENT_STATUS_COLOR } from '@/types'
 import dayjs from 'dayjs'
 
+const router = useRouter()
 const itemStore = useItemStore()
 const orderStore = useOrderStore()
 const userStore = useUserStore()
@@ -751,6 +873,14 @@ const placeholderImage = 'https://picsum.photos/seed/empty/200/200'
 const announcementTitle = ref('')
 const announcementContent = ref('')
 const sendingAnnouncement = ref(false)
+
+const showRejectModal = ref(false)
+const rejectingComment = ref<Comment | null>(null)
+const rejectTemplates = ref<RejectReasonTemplate[]>([])
+const rejectSelectedTemplateId = ref<string>('')
+const rejectCustomReason = ref('')
+const rejectRemark = ref('')
+const rejectingLoading = ref(false)
 
 const canSendAnnouncement = computed(() => {
   return announcementTitle.value.trim().length > 0 && announcementContent.value.trim().length > 0
@@ -993,6 +1123,60 @@ async function switchToComments() {
   activeTab.value = 'comments'
   await itemStore.fetchCommentStats()
   await fetchAllComments()
+  try {
+    const res = await moderationApi.listRejectReasonTemplates()
+    rejectTemplates.value = res.data as RejectReasonTemplate[]
+  } catch (e) {
+    console.warn('加载驳回原因模板失败', e)
+  }
+}
+
+function switchToModeration() {
+  router.push('/moderation')
+}
+
+function openRejectModal(comment: Comment) {
+  rejectingComment.value = comment
+  rejectSelectedTemplateId.value = rejectTemplates.value.find(t => t.isDefault)?.id || ''
+  rejectCustomReason.value = ''
+  rejectRemark.value = ''
+  showRejectModal.value = true
+}
+
+function closeRejectModal() {
+  showRejectModal.value = false
+  rejectingComment.value = null
+}
+
+const rejectReasonText = computed(() => {
+  if (rejectSelectedTemplateId.value) {
+    return rejectTemplates.value.find(t => t.id === rejectSelectedTemplateId.value)?.description || ''
+  }
+  return rejectCustomReason.value.trim()
+})
+
+const canRejectSubmit = computed(() => {
+  return rejectReasonText.value.length > 0
+})
+
+async function submitReject() {
+  if (!rejectingComment.value || !canRejectSubmit.value) return
+  rejectingLoading.value = true
+  try {
+    const data: CommentReject = {
+      rejectReason: rejectReasonText.value,
+      rejectReasonId: rejectSelectedTemplateId.value || undefined,
+      remark: rejectRemark.value.trim() || undefined
+    }
+    await itemStore.rejectComment(rejectingComment.value.id, data)
+    await itemStore.fetchCommentStats()
+    closeRejectModal()
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || '操作失败，请重试'
+    alert(msg)
+  } finally {
+    rejectingLoading.value = false
+  }
 }
 
 async function fetchAllComments() {
@@ -1024,14 +1208,7 @@ async function handleApproveComment(comment: Comment) {
 }
 
 async function handleRejectComment(comment: Comment) {
-  if (!confirm(`确定拒绝这条留言吗？\n\n"${comment.content.slice(0, 50)}${comment.content.length > 50 ? '...' : ''}"`)) return
-  try {
-    await itemStore.rejectComment(comment.id)
-    await itemStore.fetchCommentStats()
-  } catch (e: any) {
-    const msg = e?.response?.data?.message || '操作失败，请重试'
-    alert(msg)
-  }
+  openRejectModal(comment)
 }
 
 async function handleDeleteComment(comment: Comment) {
@@ -1874,5 +2051,181 @@ async function handleSendAnnouncement() {
 
 .announcement-hint strong {
   font-weight: 600;
+}
+
+.modal-content-sm {
+  max-width: 520px;
+}
+
+.comment-review-info {
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.875rem;
+}
+
+.comment-review-info.reject {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.comment-review-info.approve {
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.review-info-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-text);
+  margin-bottom: 0.25rem;
+}
+
+.review-icon {
+  font-size: 0.875rem;
+}
+
+.review-time {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin-left: auto;
+}
+
+.review-reason {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.reject-preview {
+  background: var(--color-background);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.reject-preview-label {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.375rem;
+}
+
+.reject-preview-content {
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.template-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.template-item {
+  padding: 0.875rem 1rem;
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--color-surface);
+}
+
+.template-item:hover {
+  border-color: var(--color-primary);
+}
+
+.template-item.active {
+  border-color: var(--color-primary);
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.template-title {
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 0.9375rem;
+  margin-bottom: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.template-default {
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.4rem;
+  border-radius: 4px;
+  background: var(--color-primary);
+  color: white;
+  font-weight: 500;
+}
+
+.template-desc {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.no-templates {
+  padding: 1rem;
+  background: var(--color-background);
+  border-radius: 8px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.no-templates p {
+  margin: 0;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 0.9375rem;
+}
+
+.required {
+  color: var(--color-accent);
+  margin-left: 2px;
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.form-hint {
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  justify-content: flex-end;
 }
 </style>

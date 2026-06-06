@@ -27,10 +27,22 @@ import type {
   CommentCreate,
   CommentQueryParams,
   CommentStats,
+  CommentReject,
   Message,
   MessageQueryParams,
   MessageStats,
-  DashboardData
+  DashboardData,
+  SensitiveWord,
+  SensitiveWordCreate,
+  SensitiveWordUpdate,
+  SensitiveWordQueryParams,
+  ContentCheckResult,
+  ReviewRecord,
+  ReviewRecordQueryParams,
+  RejectReasonTemplate,
+  RejectReasonTemplateCreate,
+  RejectReasonTemplateUpdate,
+  ModerationStats
 } from '@/types'
 
 const TOKEN_KEY = 'solo_auth_token'
@@ -258,12 +270,12 @@ export const commentApi = {
     return api.get('/comments/stats')
   },
 
-  approve(id: string): Promise<ApiResponse<Comment>> {
-    return api.post(`/comments/${id}/approve`)
+  approve(id: string, remark?: string): Promise<ApiResponse<Comment>> {
+    return api.post(`/comments/${id}/approve`, remark ? { remark } : {})
   },
 
-  reject(id: string): Promise<ApiResponse<Comment>> {
-    return api.post(`/comments/${id}/reject`)
+  reject(id: string, data?: CommentReject): Promise<ApiResponse<Comment>> {
+    return api.post(`/comments/${id}/reject`, data || {})
   },
 
   delete(id: string): Promise<ApiResponse<null>> {
@@ -308,6 +320,68 @@ export const messageApi = {
 export const dashboardApi = {
   getOverview(days?: number): Promise<ApiResponse<DashboardData>> {
     return api.get('/dashboard/overview', days ? { params: { days } } : undefined)
+  }
+}
+
+export const moderationApi = {
+  getStats(): Promise<ApiResponse<ModerationStats>> {
+    return api.get('/moderation/stats')
+  },
+
+  checkContent(content: string): Promise<ApiResponse<ContentCheckResult>> {
+    return api.post('/moderation/check', { content })
+  },
+
+  listSensitiveWords(params?: SensitiveWordQueryParams): Promise<ApiResponse<PaginatedResponse<SensitiveWord>>> {
+    return api.get('/moderation/sensitive-words', { params })
+  },
+
+  getSensitiveWordById(id: string): Promise<ApiResponse<SensitiveWord>> {
+    return api.get(`/moderation/sensitive-words/${id}`)
+  },
+
+  createSensitiveWord(data: SensitiveWordCreate): Promise<ApiResponse<SensitiveWord>> {
+    return api.post('/moderation/sensitive-words', data)
+  },
+
+  batchCreateSensitiveWords(words: SensitiveWordCreate[]): Promise<ApiResponse<{ created: number; skipped: number; errors: string[] }>> {
+    return api.post('/moderation/sensitive-words/batch', { words })
+  },
+
+  updateSensitiveWord(id: string, data: SensitiveWordUpdate): Promise<ApiResponse<SensitiveWord>> {
+    return api.put(`/moderation/sensitive-words/${id}`, data)
+  },
+
+  deleteSensitiveWord(id: string): Promise<ApiResponse<null>> {
+    return api.delete(`/moderation/sensitive-words/${id}`)
+  },
+
+  listReviewRecords(params?: ReviewRecordQueryParams): Promise<ApiResponse<PaginatedResponse<ReviewRecord>>> {
+    return api.get('/moderation/review-records', { params })
+  },
+
+  getReviewRecordsByTarget(targetType: string, targetId: string): Promise<ApiResponse<ReviewRecord[]>> {
+    return api.get(`/moderation/review-records/target/${targetType}/${targetId}`)
+  },
+
+  listRejectReasonTemplates(category?: string): Promise<ApiResponse<RejectReasonTemplate[]>> {
+    return api.get('/moderation/reject-reasons', category ? { params: { category } } : undefined)
+  },
+
+  getRejectReasonTemplateById(id: string): Promise<ApiResponse<RejectReasonTemplate>> {
+    return api.get(`/moderation/reject-reasons/${id}`)
+  },
+
+  createRejectReasonTemplate(data: RejectReasonTemplateCreate): Promise<ApiResponse<RejectReasonTemplate>> {
+    return api.post('/moderation/reject-reasons', data)
+  },
+
+  updateRejectReasonTemplate(id: string, data: RejectReasonTemplateUpdate): Promise<ApiResponse<RejectReasonTemplate>> {
+    return api.put(`/moderation/reject-reasons/${id}`, data)
+  },
+
+  deleteRejectReasonTemplate(id: string): Promise<ApiResponse<null>> {
+    return api.delete(`/moderation/reject-reasons/${id}`)
   }
 }
 

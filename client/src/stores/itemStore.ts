@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { itemApi, commentApi } from '@/api'
-import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, MetaData, Stats, Bid, BidCreate, CalendarData, CalendarQueryParams, Comment, CommentCreate, CommentStats, CommentQueryParams } from '@/types'
+import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, MetaData, Stats, Bid, BidCreate, CalendarData, CalendarQueryParams, Comment, CommentCreate, CommentStats, CommentQueryParams, CommentReject } from '@/types'
 
 const DRAFT_STORAGE_KEY = 'solo_item_form_draft'
 
@@ -328,8 +328,8 @@ export const useItemStore = defineStore('item', () => {
     return commentStats.value
   }
 
-  async function approveComment(id: string) {
-    const response = await commentApi.approve(id)
+  async function approveComment(id: string, remark?: string) {
+    const response = await commentApi.approve(id, remark)
     const updated = response.data as Comment
     const index = allComments.value.findIndex(c => c.id === id)
     if (index !== -1) {
@@ -338,8 +338,8 @@ export const useItemStore = defineStore('item', () => {
     return updated
   }
 
-  async function rejectComment(id: string) {
-    const response = await commentApi.reject(id)
+  async function rejectComment(id: string, data?: CommentReject) {
+    const response = await commentApi.reject(id, data)
     const updated = response.data as Comment
     const index = allComments.value.findIndex(c => c.id === id)
     if (index !== -1) {

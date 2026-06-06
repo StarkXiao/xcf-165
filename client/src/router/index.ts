@@ -51,6 +51,12 @@ const routes: RouteRecordRaw[] = [
     name: 'Messages',
     component: () => import('@/views/MessagesView.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/moderation',
+    name: 'Moderation',
+    component: () => import('@/views/ModerationView.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 

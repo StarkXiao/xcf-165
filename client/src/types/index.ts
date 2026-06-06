@@ -280,10 +280,20 @@ export interface Comment {
   parentId: string | null
   content: string
   status: CommentStatus
+  rejectReason: string | null
+  rejectReasonId: string | null
+  reviewerId: string | null
+  reviewedAt: string | null
   createdAt: string
   updatedAt: string
   replies?: Comment[]
   itemTitle?: string
+}
+
+export interface CommentReject {
+  rejectReason?: string
+  rejectReasonId?: string
+  remark?: string
 }
 
 export interface CommentCreate {
@@ -509,4 +519,169 @@ export interface DashboardData {
   totalLikes: number
   totalBidCount: number
   userCount: number
+}
+
+export type SensitiveWordCategory = 'politics' | 'violence' | 'pornography' | 'ad' | 'insult' | 'other'
+
+export const SENSITIVE_WORD_CATEGORY_LABEL: Record<SensitiveWordCategory | 'all', string> = {
+  all: '全部',
+  politics: '政治敏感',
+  violence: '暴力内容',
+  pornography: '色情内容',
+  ad: '广告垃圾',
+  insult: '辱骂攻击',
+  other: '其他违规'
+}
+
+export const SENSITIVE_WORD_CATEGORY_COLOR: Record<SensitiveWordCategory, string> = {
+  politics: '#ef4444',
+  violence: '#f97316',
+  pornography: '#ec4899',
+  ad: '#f59e0b',
+  insult: '#dc2626',
+  other: '#64748b'
+}
+
+export type SensitiveWordLevel = 'low' | 'medium' | 'high'
+
+export const SENSITIVE_WORD_LEVEL_LABEL: Record<SensitiveWordLevel | 'all', string> = {
+  all: '全部',
+  low: '低危',
+  medium: '中危',
+  high: '高危'
+}
+
+export const SENSITIVE_WORD_LEVEL_COLOR: Record<SensitiveWordLevel, string> = {
+  low: '#22c55e',
+  medium: '#f59e0b',
+  high: '#ef4444'
+}
+
+export interface SensitiveWord {
+  id: string
+  word: string
+  category: SensitiveWordCategory
+  level: SensitiveWordLevel
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SensitiveWordCreate {
+  word: string
+  category: SensitiveWordCategory
+  level?: SensitiveWordLevel
+}
+
+export interface SensitiveWordUpdate {
+  word?: string
+  category?: SensitiveWordCategory
+  level?: SensitiveWordLevel
+}
+
+export interface SensitiveWordQueryParams {
+  page?: number
+  pageSize?: number
+  category?: SensitiveWordCategory | 'all'
+  level?: SensitiveWordLevel | 'all'
+  keyword?: string
+}
+
+export interface SensitiveWordMatch {
+  word: string
+  category: SensitiveWordCategory
+  level: SensitiveWordLevel
+  start: number
+  end: number
+}
+
+export interface ContentCheckResult {
+  passed: boolean
+  matches: SensitiveWordMatch[]
+  highestLevel: 'none' | SensitiveWordLevel
+  suggestedAction: 'pass' | 'review' | 'block'
+}
+
+export type ReviewableType = 'comment' | 'item' | 'message'
+
+export type ReviewAction = 'approve' | 'reject'
+
+export const REVIEW_ACTION_LABEL: Record<ReviewAction | 'all', string> = {
+  all: '全部',
+  approve: '通过',
+  reject: '驳回'
+}
+
+export const REVIEW_ACTION_COLOR: Record<ReviewAction, string> = {
+  approve: '#22c55e',
+  reject: '#ef4444'
+}
+
+export const REVIEWABLE_TYPE_LABEL: Record<ReviewableType | 'all', string> = {
+  all: '全部',
+  comment: '留言',
+  item: '藏品',
+  message: '消息'
+}
+
+export interface ReviewRecord {
+  id: string
+  targetId: string
+  targetType: ReviewableType
+  reviewerId: string
+  reviewerName: string
+  action: ReviewAction
+  rejectReason: string | null
+  rejectReasonId: string | null
+  beforeStatus: string
+  afterStatus: string
+  remark: string | null
+  createdAt: string
+}
+
+export interface ReviewRecordQueryParams {
+  page?: number
+  pageSize?: number
+  targetType?: ReviewableType | 'all'
+  action?: ReviewAction | 'all'
+  targetId?: string
+  reviewerId?: string
+  startDate?: string
+  endDate?: string
+}
+
+export interface RejectReasonTemplate {
+  id: string
+  title: string
+  description: string
+  category: string
+  isDefault: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RejectReasonTemplateCreate {
+  title: string
+  description: string
+  category?: string
+  isDefault?: boolean
+  sortOrder?: number
+}
+
+export interface RejectReasonTemplateUpdate {
+  title?: string
+  description?: string
+  category?: string
+  isDefault?: boolean
+  sortOrder?: number
+}
+
+export interface ModerationStats {
+  totalReviewed: number
+  approved: number
+  rejected: number
+  pending: number
+  sensitiveWordCount: number
+  autoBlocked: number
+  autoFlagged: number
 }
