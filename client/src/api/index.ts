@@ -20,7 +20,9 @@ import type {
   Order,
   OrderCreate,
   OrderQueryParams,
-  OrderStats
+  OrderStats,
+  CalendarQueryParams,
+  CalendarData
 } from '@/types'
 
 const TOKEN_KEY = 'solo_auth_token'
@@ -136,6 +138,10 @@ export const itemApi = {
 
   markAsSold(id: string): Promise<ApiResponse<Item>> {
     return api.post(`/items/${id}/sold`)
+  },
+
+  getCalendar(params?: CalendarQueryParams): Promise<ApiResponse<CalendarData>> {
+    return api.get('/items/calendar', { params })
   },
 
   checkFavorite(id: string): Promise<ApiResponse<{ favorited: boolean }>> {

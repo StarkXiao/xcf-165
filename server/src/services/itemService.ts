@@ -1,8 +1,9 @@
 import { v4 as uuidv4 } from 'uuid'
 import dayjs from 'dayjs'
 import { getDatabase, saveDatabase } from '../database'
-import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, Bid, BidCreate, Favorite } from '../types'
+import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, Bid, BidCreate, Favorite, CalendarQueryParams, CalendarData, CalendarDayItem } from '../types'
 import type { Database } from 'sql.js'
+import { EMOTION_TAGS } from '../types'
 
 async function withDb<T>(fn: (db: Database) => T): Promise<T> {
   const db = await getDatabase()
@@ -598,6 +599,96 @@ export const itemService = {
 
       const result = db.exec(`SELECT * FROM items WHERE id = '${id}'`)
       return rowToItem(result[0].values[0])
+    })
+  },
+
+  async getCalendar(params: CalendarQueryParams): Promise<CalendarData> {
+    await this.activateScheduledItems()
+    const now = dayjs()
+    const year = params.year ?? now.year()
+    const month = params.month ?? now.month() + 1
+    const { emotionTag, status } = params
+
+    const startDate = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).startOf('month')
+    const endDate = startDate.endOf('month')
+
+    const conditions: string[] = ['createdAt >= ?', 'createdAt <= ?']
+    const values: unknown[] = [startDate.toISOString(), endDate.toISOString()]
+
+    if (status) {
+      conditions.push('status = ?')
+      values.push(status)
+    }
+
+    if (emotionTag) {
+      conditions.push('emotionTags LIKE ?')
+      values.push(`%${emotionTag}%`)
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`
+
+    return withDb((db) => {
+      const dataSql = `
+        SELECT * FROM items ${whereClause}
+        ORDER BY createdAt DESC
+      `
+
+      let items: Item[] = []
+      if (values.length > 0) {
+        const dataStmt = db.prepare(dataSql)
+        dataStmt.bind(values as (string | number)[])
+        while (dataStmt.step()) {
+          items.push(rowToItem(dataStmt.get()))
+        }
+        dataStmt.free()
+      } else {
+        const res = db.exec(dataSql)
+        if (res.length > 0) {
+          items = res[0].values.map(rowToItem)
+        }
+      }
+
+      const daysMap = new Map<string, Item[]>()
+      items.forEach((item) => {
+        const dateKey = dayjs(item.createdAt).format('YYYY-MM-DD')
+        if (!daysMap.has(dateKey)) {
+          daysMap.set(dateKey, [])
+        }
+        daysMap.get(dateKey)!.push(item)
+      })
+
+      const days: CalendarDayItem[] = []
+      const daysInMonth = startDate.daysInMonth()
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+        const dayItems = daysMap.get(dateKey) || []
+        days.push({
+          date: dateKey,
+          items: dayItems,
+          count: dayItems.length
+        })
+      }
+
+      const emotionTagCounts: Record<string, number> = {}
+      EMOTION_TAGS.forEach((tag) => {
+        emotionTagCounts[tag] = 0
+      })
+      items.forEach((item) => {
+        const tags = item.emotionTags ? item.emotionTags.split(',').filter(Boolean) : []
+        tags.forEach((tag) => {
+          if (emotionTagCounts[tag] !== undefined) {
+            emotionTagCounts[tag]++
+          }
+        })
+      })
+
+      return {
+        year,
+        month,
+        days,
+        totalItems: items.length,
+        emotionTagCounts
+      }
     })
   }
 }

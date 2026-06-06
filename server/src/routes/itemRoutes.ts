@@ -3,7 +3,7 @@ import type { DefaultContext, DefaultState } from 'koa'
 import { itemService } from '../services/itemService'
 import { uploadService } from '../services/uploadService'
 import { EMOTION_TAGS, CATEGORIES, CONDITIONS } from '../types'
-import type { ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, BidCreate } from '../types'
+import type { ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, BidCreate, CalendarQueryParams } from '../types'
 import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth'
 
 const router = new Router<DefaultState, DefaultContext>({ prefix: '/api/items' })
@@ -62,6 +62,21 @@ router.get('/stats', async (ctx) => {
     code: 200,
     message: 'success',
     data: stats
+  }
+})
+
+router.get('/calendar', async (ctx) => {
+  const query = ctx.query as CalendarQueryParams
+  const result = await itemService.getCalendar({
+    ...query,
+    year: query.year ? Number(query.year) : undefined,
+    month: query.month ? Number(query.month) : undefined
+  })
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: result
   }
 })
 

@@ -198,3 +198,24 @@ export interface OrderQueryParams {
   keyword?: string
   role?: 'buyer' | 'seller' | 'all'
 }
+
+export interface CalendarQueryParams {
+  year?: number
+  month?: number
+  emotionTag?: string
+  status?: string
+}
+
+export interface CalendarDayItem {
+  date: string
+  items: Item[]
+  count: number
+}
+
+export interface CalendarData {
+  year: number
+  month: number
+  days: CalendarDayItem[]
+  totalItems: number
+  emotionTagCounts: Record<string, number>
+}

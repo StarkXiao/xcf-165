@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { itemApi } from '@/api'
-import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, MetaData, Stats, Bid, BidCreate } from '@/types'
+import type { Item, ItemCreate, ItemDraftCreate, ItemUpdate, QueryParams, PaginatedResponse, MetaData, Stats, Bid, BidCreate, CalendarData, CalendarQueryParams } from '@/types'
 
 const DRAFT_STORAGE_KEY = 'solo_item_form_draft'
 
@@ -26,6 +26,10 @@ export const useItemStore = defineStore('item', () => {
     sortOrder: 'desc',
     status: 'active'
   })
+
+  const calendarData = ref<CalendarData | null>(null)
+  const calendarLoading = ref(false)
+  const calendarQueryParams = ref<CalendarQueryParams>({})
 
   const hasMore = computed(() => pagination.value.page < pagination.value.totalPages)
 
@@ -226,6 +230,28 @@ export const useItemStore = defineStore('item', () => {
     bids.value = []
   }
 
+  async function fetchCalendar(params?: CalendarQueryParams) {
+    calendarLoading.value = true
+    try {
+      if (params) {
+        calendarQueryParams.value = { ...calendarQueryParams.value, ...params }
+      }
+      const response = await itemApi.getCalendar(calendarQueryParams.value)
+      calendarData.value = response.data as CalendarData
+      return calendarData.value
+    } finally {
+      calendarLoading.value = false
+    }
+  }
+
+  function setCalendarQueryParams(params: Partial<CalendarQueryParams>) {
+    calendarQueryParams.value = { ...calendarQueryParams.value, ...params }
+  }
+
+  function resetCalendarQueryParams() {
+    calendarQueryParams.value = {}
+  }
+
   return {
     items,
     currentItem,
@@ -237,6 +263,9 @@ export const useItemStore = defineStore('item', () => {
     stats,
     queryParams,
     hasMore,
+    calendarData,
+    calendarLoading,
+    calendarQueryParams,
     fetchItems,
     fetchMoreItems,
     fetchItemById,
@@ -256,6 +285,9 @@ export const useItemStore = defineStore('item', () => {
     clearLocalDraft,
     setQueryParams,
     resetQueryParams,
-    clearCurrentItem
+    clearCurrentItem,
+    fetchCalendar,
+    setCalendarQueryParams,
+    resetCalendarQueryParams
   }
 })
