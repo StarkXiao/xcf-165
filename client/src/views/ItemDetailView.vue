@@ -305,6 +305,7 @@
                     </div>
                   </div>
                   <button
+                    v-if="isOwnItem"
                     class="btn btn-ghost btn-sm reply-btn"
                     @click="startReply(comment)"
                   >
@@ -321,6 +322,7 @@
                   >
                     <div class="reply-header">
                       <span class="reply-username">{{ reply.username }}</span>
+                      <span v-if="item && reply.userId === item.ownerId" class="seller-badge">卖家</span>
                       <span class="reply-time">{{ formatDateTime(reply.createdAt) }}</span>
                     </div>
                     <div class="reply-content">{{ reply.content }}</div>
@@ -583,8 +585,9 @@ async function handleSubmitComment() {
     if (!userStore.isLoggedIn) {
       commentForm.username = ''
     }
+    const isReply = !!replyingTo.value
     replyingTo.value = null
-    alert('留言提交成功，等待审核通过后显示')
+    alert(isReply ? '回复发送成功' : '留言提交成功，等待审核通过后显示')
     await itemStore.fetchComments(item.value.id)
   } catch (e: any) {
     const msg = e?.response?.data?.message || '提交失败，请重试'
@@ -1262,6 +1265,15 @@ async function handleSubmitComment() {
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--color-primary);
+}
+
+.seller-badge {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+  color: white;
+  border-radius: 9999px;
 }
 
 .reply-time {

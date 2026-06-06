@@ -86,7 +86,46 @@ function buildCommentTree(comments: Comment[]): Comment[] {
   return roots
 }
 
+function getItemOwnerId(db: Database, itemId: string): string | null {
+  const stmt = db.prepare(`SELECT ownerId FROM items WHERE id = ?`)
+  stmt.bind([itemId])
+  let ownerId: string | null = null
+  if (stmt.step()) {
+    ownerId = (stmt.getAsObject().ownerId as string) || null
+  }
+  stmt.free()
+  return ownerId
+}
+
+function getCommentItemOwnerId(db: Database, commentId: string): string | null {
+  const stmt = db.prepare(`
+    SELECT i.ownerId
+    FROM comments c
+    LEFT JOIN items i ON c.itemId = i.id
+    WHERE c.id = ?
+  `)
+  stmt.bind([commentId])
+  let ownerId: string | null = null
+  if (stmt.step()) {
+    ownerId = (stmt.getAsObject().ownerId as string) || null
+  }
+  stmt.free()
+  return ownerId
+}
+
 export const commentService = {
+  async isItemOwner(itemId: string, userId: string): Promise<boolean> {
+    return withDb((db) => {
+      return getItemOwnerId(db, itemId) === userId
+    })
+  },
+
+  async isCommentItemOwner(commentId: string, userId: string): Promise<boolean> {
+    return withDb((db) => {
+      return getCommentItemOwnerId(db, commentId) === userId
+    })
+  },
+
   async create(data: CommentCreate, userId?: string): Promise<Comment | { error: string }> {
     const now = dayjs().toISOString()
     const id = uuidv4()
@@ -108,14 +147,22 @@ export const commentService = {
         if (parent.parentId) {
           return { error: '只能对留言进行回复，不能对回复进行回复' }
         }
+        if (!userId) {
+          return { error: '请先登录后再回复' }
+        }
+        const ownerId = getItemOwnerId(db, data.itemId)
+        if (ownerId !== userId) {
+          return { error: '只有藏品卖家才能回复买家留言' }
+        }
       }
 
       const username = data.username?.trim() || '匿名用户'
+      const status = data.parentId ? 'approved' : 'pending'
 
       const stmt = db.prepare(
         `INSERT INTO comments (
           id, itemId, userId, username, parentId, content, status, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       stmt.run([
         id,
@@ -124,6 +171,7 @@ export const commentService = {
         username,
         data.parentId || null,
         data.content.trim(),
+        status,
         now,
         now
       ])
@@ -148,7 +196,7 @@ export const commentService = {
     })
   },
 
-  async list(params: CommentQueryParams): Promise<PaginatedResponse<Comment>> {
+  async list(params: CommentQueryParams, ownerId?: string): Promise<PaginatedResponse<Comment>> {
     const {
       page = 1,
       pageSize = 20,
@@ -159,6 +207,11 @@ export const commentService = {
 
     const conditions: string[] = []
     const values: unknown[] = []
+
+    if (ownerId) {
+      conditions.push('itemId IN (SELECT id FROM items WHERE ownerId = ?)')
+      values.push(ownerId)
+    }
 
     if (status && status !== 'all') {
       conditions.push('status = ?')
@@ -220,12 +273,16 @@ export const commentService = {
     })
   },
 
-  async approve(id: string): Promise<Comment | undefined | { error: string }> {
+  async approve(id: string, userId: string): Promise<Comment | undefined | { error: string; unauthorized?: boolean }> {
     const now = dayjs().toISOString()
     return withDb((db) => {
       const comment = readOneComment(db, id)
       if (!comment) {
         return { error: '留言不存在' }
+      }
+      const ownerId = getCommentItemOwnerId(db, id)
+      if (ownerId !== userId) {
+        return { error: '只有藏品卖家才能审核留言', unauthorized: true }
       }
 
       const stmt = db.prepare(`UPDATE comments SET status = 'approved', updatedAt = ? WHERE id = ?`)
@@ -236,12 +293,16 @@ export const commentService = {
     })
   },
 
-  async reject(id: string): Promise<Comment | undefined | { error: string }> {
+  async reject(id: string, userId: string): Promise<Comment | undefined | { error: string; unauthorized?: boolean }> {
     const now = dayjs().toISOString()
     return withDb((db) => {
       const comment = readOneComment(db, id)
       if (!comment) {
         return { error: '留言不存在' }
+      }
+      const ownerId = getCommentItemOwnerId(db, id)
+      if (ownerId !== userId) {
+        return { error: '只有藏品卖家才能拒绝留言', unauthorized: true }
       }
 
       const stmt = db.prepare(`UPDATE comments SET status = 'rejected', updatedAt = ? WHERE id = ?`)
@@ -252,30 +313,54 @@ export const commentService = {
     })
   },
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, userId: string): Promise<boolean | { error: string; unauthorized?: boolean }> {
     return withDb((db) => {
+      const comment = readOneComment(db, id)
+      if (!comment) {
+        return false
+      }
+      const ownerId = getCommentItemOwnerId(db, id)
+      if (ownerId !== userId) {
+        return { error: '只有藏品卖家才能删除留言', unauthorized: true }
+      }
       db.run(`DELETE FROM comments WHERE id = ? OR parentId = ?`, [id, id])
       const result = db.exec(`SELECT changes() as cnt`)
       return ((result[0]?.values[0]?.[0] as number) || 0) > 0
     })
   },
 
-  async getStats(): Promise<{
+  async getStats(ownerId?: string): Promise<{
     total: number
     pending: number
     approved: number
     rejected: number
   }> {
     return withDb((db) => {
-      const result = db.exec(`
+      let sql = `
         SELECT
           COUNT(*) as total,
           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
           SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
           SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
         FROM comments
-      `)
-      const row = result[0].values[0]
+      `
+      const values: unknown[] = []
+      if (ownerId) {
+        sql += ` WHERE itemId IN (SELECT id FROM items WHERE ownerId = ?)`
+        values.push(ownerId)
+      }
+      let row: unknown[]
+      if (values.length > 0) {
+        const stmt = db.prepare(sql)
+        stmt.bind(values as (string | number)[])
+        stmt.step()
+        const obj = stmt.getAsObject()
+        row = [obj.total, obj.pending, obj.approved, obj.rejected]
+        stmt.free()
+      } else {
+        const result = db.exec(sql)
+        row = result[0].values[0]
+      }
       return {
         total: (row[0] as number) || 0,
         pending: (row[1] as number) || 0,

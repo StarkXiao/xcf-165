@@ -8,7 +8,8 @@ import type { CommentCreate, CommentQueryParams } from '../types'
 const router = new Router<DefaultState, DefaultContext>({ prefix: '/api/comments' })
 
 router.get('/stats', authMiddleware, async (ctx) => {
-  const stats = await commentService.getStats()
+  const userId = ctx.userId!
+  const stats = await commentService.getStats(userId)
   ctx.body = {
     code: 200,
     message: 'success',
@@ -27,12 +28,13 @@ router.get('/item/:itemId', async (ctx) => {
 })
 
 router.get('/', authMiddleware, async (ctx) => {
+  const userId = ctx.userId!
   const query = ctx.query as CommentQueryParams
   const result = await commentService.list({
     ...query,
     page: query.page ? Number(query.page) : undefined,
     pageSize: query.pageSize ? Number(query.pageSize) : undefined
-  })
+  }, userId)
 
   const dataWithItemInfo = await Promise.all(
     result.data.map(async (comment) => {
@@ -82,7 +84,8 @@ router.post('/', optionalAuthMiddleware, async (ctx) => {
 
 router.post('/:id/approve', authMiddleware, async (ctx) => {
   const { id } = ctx.params
-  const result = await commentService.approve(id)
+  const userId = ctx.userId!
+  const result = await commentService.approve(id, userId)
 
   if (!result) {
     ctx.status = 404
@@ -91,8 +94,9 @@ router.post('/:id/approve', authMiddleware, async (ctx) => {
   }
 
   if ('error' in result) {
-    ctx.status = 404
-    ctx.body = { code: 404, message: (result as { error: string }).error, data: null }
+    const err = result as { error: string; unauthorized?: boolean }
+    ctx.status = err.unauthorized ? 403 : 404
+    ctx.body = { code: ctx.status, message: err.error, data: null }
     return
   }
 
@@ -105,7 +109,8 @@ router.post('/:id/approve', authMiddleware, async (ctx) => {
 
 router.post('/:id/reject', authMiddleware, async (ctx) => {
   const { id } = ctx.params
-  const result = await commentService.reject(id)
+  const userId = ctx.userId!
+  const result = await commentService.reject(id, userId)
 
   if (!result) {
     ctx.status = 404
@@ -114,8 +119,9 @@ router.post('/:id/reject', authMiddleware, async (ctx) => {
   }
 
   if ('error' in result) {
-    ctx.status = 404
-    ctx.body = { code: 404, message: (result as { error: string }).error, data: null }
+    const err = result as { error: string; unauthorized?: boolean }
+    ctx.status = err.unauthorized ? 403 : 404
+    ctx.body = { code: ctx.status, message: err.error, data: null }
     return
   }
 
@@ -128,7 +134,15 @@ router.post('/:id/reject', authMiddleware, async (ctx) => {
 
 router.delete('/:id', authMiddleware, async (ctx) => {
   const { id } = ctx.params
-  const removed = await commentService.delete(id)
+  const userId = ctx.userId!
+  const removed = await commentService.delete(id, userId)
+
+  if (typeof removed === 'object' && removed !== null && 'error' in removed) {
+    const err = removed as { error: string; unauthorized?: boolean }
+    ctx.status = err.unauthorized ? 403 : 404
+    ctx.body = { code: ctx.status, message: err.error, data: null }
+    return
+  }
 
   if (!removed) {
     ctx.status = 404
