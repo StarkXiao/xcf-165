@@ -5,10 +5,20 @@
       <div class="item-status" v-if="item.status !== 'active'">
         {{ statusText }}
       </div>
-      <button class="like-btn" :class="{ liked: isLiked }" @click.stop="handleLike">
-        <span>❤️</span>
-        <span class="like-count">{{ item.likes }}</span>
-      </button>
+      <div class="card-actions">
+        <button class="like-btn" :class="{ liked: isLiked }" @click.stop="handleLike">
+          <span>❤️</span>
+          <span class="like-count">{{ item.likes }}</span>
+        </button>
+        <button
+          v-if="userStore.isLoggedIn"
+          class="favorite-btn"
+          :class="{ favorited: isFavorited }"
+          @click.stop="handleToggleFavorite"
+        >
+          <span>{{ isFavorited ? '💖' : '🤍' }}</span>
+        </button>
+      </div>
     </div>
 
     <div class="item-content">
@@ -40,6 +50,7 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useItemStore } from '@/stores/itemStore'
+import { useUserStore } from '@/stores/userStore'
 import type { Item } from '@/types'
 
 const props = defineProps<{
@@ -48,10 +59,12 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   click: [item: Item]
+  favoriteToggled: [itemId: string, favorited: boolean]
 }>()
 
 const router = useRouter()
 const itemStore = useItemStore()
+const userStore = useUserStore()
 const isLiked = ref(false)
 const placeholderImage = 'https://picsum.photos/seed/empty/600/400'
 
@@ -62,7 +75,9 @@ const emotionTagsList = computed(() => {
 const statusText = computed(() => {
   const map: Record<string, string> = {
     sold: '已成交',
-    archived: '已下架'
+    archived: '已下架',
+    draft: '草稿',
+    scheduled: '即将上架'
   }
   return map[props.item.status] || ''
 })
@@ -72,6 +87,10 @@ const displayPrice = computed(() => {
     return props.item.soldPrice
   }
   return props.item.currentPrice || props.item.price
+})
+
+const isFavorited = computed(() => {
+  return userStore.isLoggedIn && userStore.favoriteItems.has(props.item.id)
 })
 
 function handleClick() {
@@ -87,6 +106,15 @@ async function handleLike() {
   } catch (e) {
     console.error('点赞失败', e)
   }
+}
+
+async function handleToggleFavorite() {
+  if (!userStore.isLoggedIn) {
+    router.push('/login')
+    return
+  }
+  const favorited = await userStore.toggleFavorite(props.item.id)
+  emit('favoriteToggled', props.item.id, favorited)
 }
 </script>
 
@@ -127,10 +155,16 @@ async function handleLike() {
   color: var(--color-surface);
 }
 
-.like-btn {
+.card-actions {
   position: absolute;
   top: 12px;
   right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.like-btn {
   display: flex;
   align-items: center;
   gap: 0.25rem;
@@ -142,6 +176,8 @@ async function handleLike() {
   font-weight: 500;
   transition: all 0.2s ease;
   color: var(--color-text);
+  border: none;
+  cursor: pointer;
 }
 
 .like-btn:hover {
@@ -156,6 +192,32 @@ async function handleLike() {
 
 .like-count {
   font-variant-numeric: tabular-nums;
+}
+
+.favorite-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+  align-self: flex-end;
+}
+
+.favorite-btn:hover {
+  background: white;
+  transform: scale(1.1);
+}
+
+.favorite-btn.favorited {
+  background: rgba(244, 63, 94, 0.15);
+  color: var(--color-accent);
 }
 
 .item-content {

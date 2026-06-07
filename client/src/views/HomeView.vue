@@ -63,13 +63,18 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useItemStore } from '@/stores/itemStore'
+import { useUserStore } from '@/stores/userStore'
 import ItemCard from '@/components/ItemCard.vue'
 import FilterBar from '@/components/FilterBar.vue'
 import type { Item } from '@/types'
 
 const itemStore = useItemStore()
+const userStore = useUserStore()
 
-onMounted(() => {
+onMounted(async () => {
+  if (userStore.isLoggedIn) {
+    userStore.fetchMyFavorites({ pageSize: 100 }).catch(() => {})
+  }
   itemStore.fetchItems()
 })
 

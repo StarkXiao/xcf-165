@@ -10,6 +10,9 @@
         <router-link to="/" class="nav-link" :class="{ active: route.path === '/' }">
           拍品展墙
         </router-link>
+        <router-link to="/favorites" class="nav-link" :class="{ active: route.path === '/favorites' }">
+          我的收藏
+        </router-link>
         <router-link to="/dashboard" class="nav-link" :class="{ active: route.path === '/dashboard' }">
           数据看板
         </router-link>

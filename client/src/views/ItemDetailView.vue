@@ -374,7 +374,6 @@ const userStore = useUserStore()
 const orderStore = useOrderStore()
 
 const isLiked = ref(false)
-const isFavorited = ref(false)
 const bidding = ref(false)
 const ordering = ref(false)
 const submittingComment = ref(false)
@@ -439,6 +438,11 @@ const isOwnItem = computed(() => {
   return item.value.ownerId === userStore.currentUser.id
 })
 
+const isFavorited = computed(() => {
+  if (!item.value || !userStore.isLoggedIn) return false
+  return userStore.favoriteItems.has(item.value.id)
+})
+
 function goLogin() {
   router.push('/login')
 }
@@ -458,7 +462,7 @@ onMounted(async () => {
       }
     }
     if (userStore.isLoggedIn) {
-      isFavorited.value = await userStore.checkFavorite(id)
+      userStore.checkFavorite(id)
     }
   }
 })
@@ -487,7 +491,7 @@ async function handleLike() {
 
 async function handleToggleFavorite() {
   if (!item.value || !userStore.isLoggedIn) return
-  isFavorited.value = await userStore.toggleFavorite(item.value.id)
+  await userStore.toggleFavorite(item.value.id)
 }
 
 async function handlePlaceBid() {

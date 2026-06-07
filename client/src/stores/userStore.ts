@@ -123,7 +123,13 @@ export const useUserStore = defineStore('user', () => {
     try {
       const response = await userApi.getMyFavorites(params)
       const data = response.data as PaginatedResponse<Item>
-      myFavorites.value = data.data
+      if (params?.page && params.page > 1) {
+        const existingIds = new Set(myFavorites.value.map(i => i.id))
+        const newItems = data.data.filter(i => !existingIds.has(i.id))
+        myFavorites.value = [...myFavorites.value, ...newItems]
+      } else {
+        myFavorites.value = data.data
+      }
       myFavoritesPagination.value = {
         page: data.page,
         pageSize: data.pageSize,
