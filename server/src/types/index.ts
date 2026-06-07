@@ -473,3 +473,63 @@ export interface ModerationStats {
   autoBlocked: number
   autoFlagged: number
 }
+
+export interface SalesArchive {
+  id: string
+  orderId: string | null
+  itemId: string
+  itemTitle: string
+  itemImageUrl: string | null
+  sellerId: string | null
+  buyerId: string | null
+  buyerName: string
+  destination: string | null
+  finalPrice: number
+  farewellMessage: string | null
+  emotionTags: string
+  category: string
+  archivedAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SalesArchiveCreate {
+  orderId?: string
+  itemId: string
+  itemTitle?: string
+  itemImageUrl?: string
+  sellerId?: string
+  buyerId?: string
+  buyerName?: string
+  destination?: string
+  finalPrice?: number
+  farewellMessage?: string
+  emotionTags?: string
+  category?: string
+}
+
+export interface SalesArchiveUpdate {
+  destination?: string
+  finalPrice?: number
+  farewellMessage?: string
+}
+
+export interface SalesArchiveQueryParams {
+  page?: number
+  pageSize?: number
+  keyword?: string
+  category?: string
+  emotionTag?: string
+  startDate?: string
+  endDate?: string
+  minPrice?: number
+  maxPrice?: number
+}
+
+export interface SalesArchiveStats {
+  total: number
+  totalSalesAmount: number
+  averagePrice: number
+  categoryCounts: Record<string, number>
+  emotionTagCounts: Record<string, number>
+}

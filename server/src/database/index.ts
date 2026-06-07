@@ -239,6 +239,31 @@ function initTables(db: Database) {
   if (!commentColNames.includes('reviewedAt')) {
     db.run(`ALTER TABLE comments ADD COLUMN reviewedAt TEXT`)
   }
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sales_archives (
+      id TEXT PRIMARY KEY,
+      orderId TEXT,
+      itemId TEXT NOT NULL,
+      itemTitle TEXT NOT NULL,
+      itemImageUrl TEXT,
+      sellerId TEXT,
+      buyerId TEXT,
+      buyerName TEXT NOT NULL,
+      destination TEXT,
+      finalPrice REAL NOT NULL DEFAULT 0,
+      farewellMessage TEXT,
+      emotionTags TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT '',
+      archivedAt TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (orderId) REFERENCES orders(id),
+      FOREIGN KEY (itemId) REFERENCES items(id),
+      FOREIGN KEY (sellerId) REFERENCES users(id),
+      FOREIGN KEY (buyerId) REFERENCES users(id)
+    )
+  `)
 }
 
 export function saveDatabase(db: Database): void {

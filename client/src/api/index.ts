@@ -42,7 +42,12 @@ import type {
   RejectReasonTemplate,
   RejectReasonTemplateCreate,
   RejectReasonTemplateUpdate,
-  ModerationStats
+  ModerationStats,
+  SalesArchive,
+  SalesArchiveCreate,
+  SalesArchiveUpdate,
+  SalesArchiveQueryParams,
+  SalesArchiveStats
 } from '@/types'
 
 const TOKEN_KEY = 'solo_auth_token'
@@ -382,6 +387,39 @@ export const moderationApi = {
 
   deleteRejectReasonTemplate(id: string): Promise<ApiResponse<null>> {
     return api.delete(`/moderation/reject-reasons/${id}`)
+  }
+}
+
+export const salesArchiveApi = {
+  create(data: SalesArchiveCreate): Promise<ApiResponse<SalesArchive>> {
+    return api.post('/sales-archives', data)
+  },
+
+  getById(id: string): Promise<ApiResponse<SalesArchive>> {
+    return api.get(`/sales-archives/${id}`)
+  },
+
+  list(params?: SalesArchiveQueryParams): Promise<ApiResponse<PaginatedResponse<SalesArchive>>> {
+    return api.get('/sales-archives', { params })
+  },
+
+  getStats(): Promise<ApiResponse<SalesArchiveStats>> {
+    return api.get('/sales-archives/stats')
+  },
+
+  update(id: string, data: SalesArchiveUpdate): Promise<ApiResponse<SalesArchive>> {
+    return api.put(`/sales-archives/${id}`, data)
+  },
+
+  delete(id: string): Promise<ApiResponse<null>> {
+    return api.delete(`/sales-archives/${id}`)
+  },
+
+  exportCsv(params?: SalesArchiveQueryParams): Promise<Blob> {
+    return api.get('/sales-archives/export', {
+      params,
+      responseType: 'blob'
+    })
   }
 }
 

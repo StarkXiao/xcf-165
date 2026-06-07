@@ -13,6 +13,7 @@ import commentRoutes from './routes/commentRoutes'
 import messageRoutes from './routes/messageRoutes'
 import dashboardRoutes from './routes/dashboardRoutes'
 import moderationRoutes from './routes/moderationRoutes'
+import salesArchiveRoutes from './routes/salesArchiveRoutes'
 import { itemService } from './services/itemService'
 
 async function start() {
@@ -88,6 +89,8 @@ async function start() {
   app.use(dashboardRoutes.allowedMethods())
   app.use(moderationRoutes.routes())
   app.use(moderationRoutes.allowedMethods())
+  app.use(salesArchiveRoutes.routes())
+  app.use(salesArchiveRoutes.allowedMethods())
 
   app.use(responseHandler)
 
